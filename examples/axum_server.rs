@@ -156,10 +156,8 @@ async fn paid_gate(
                 .into_response())
         }
         Err(e) => {
-            let body =
-                payment_required_json(&pr.with_error(format!("Facilitator: {e}"))).map_err(
-                    |e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()),
-                )?;
+            let body = payment_required_json(&pr.with_error(format!("Facilitator: {e}")))
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             Ok((StatusCode::PAYMENT_REQUIRED, Json(body)).into_response())
         }
     }

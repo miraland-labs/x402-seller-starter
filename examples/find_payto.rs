@@ -55,9 +55,7 @@ async fn main() {
 }
 
 async fn run() -> Result<(), DemoErr> {
-    let _ = dotenvy::from_path(
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".env"),
-    );
+    let _ = dotenvy::from_path(std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join(".env"));
 
     let base = std::env::var("FACILITATOR_BASE_URL")
         .map_err(|_| e("Set FACILITATOR_BASE_URL in .env (or export it)."))?;
@@ -65,13 +63,10 @@ async fn run() -> Result<(), DemoErr> {
 
     let wallet = std::env::var("MERCHANT_WALLET")
         .or_else(|_| std::env::var("SELLER_WALLET"))
-        .map_err(|_| {
-            e("Set MERCHANT_WALLET (or SELLER_WALLET) to your merchant base58 pubkey.")
-        })?;
+        .map_err(|_| e("Set MERCHANT_WALLET (or SELLER_WALLET) to your merchant base58 pubkey."))?;
 
-    let network = std::env::var("X402_NETWORK").unwrap_or_else(|_| {
-        "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1".to_string()
-    });
+    let network = std::env::var("X402_NETWORK")
+        .unwrap_or_else(|_| "solana:EtWTRABZaYq6iMfeYKouRu166VU2xqa1".to_string());
 
     let client = reqwest::Client::new();
 
@@ -108,8 +103,8 @@ async fn run() -> Result<(), DemoErr> {
 
     let merchant_pk = Pubkey::from_str(wallet.trim())
         .map_err(|x| e(format!("MERCHANT_WALLET parse error: {x}")))?;
-    let program_id = Pubkey::from_str(program_id_str)
-        .map_err(|x| e(format!("programId parse error: {x}")))?;
+    let program_id =
+        Pubkey::from_str(program_id_str).map_err(|x| e(format!("programId parse error: {x}")))?;
 
     let (vault_pda, _bump) =
         Pubkey::find_program_address(&[b"vault", merchant_pk.as_ref()], &program_id);

@@ -30,16 +30,10 @@ pub struct FacilitatorClient {
 impl FacilitatorClient {
     pub fn new(facilitator_base: &str) -> Result<Self, FacilitatorError> {
         let base = facilitator_base.trim_end_matches('/');
-        let verify = Url::parse(&format!(
-            "{}/api/v1/facilitator/verify",
-            base
-        ))
-        .map_err(|e| FacilitatorError::Url(e.to_string()))?;
-        let settle = Url::parse(&format!(
-            "{}/api/v1/facilitator/settle",
-            base
-        ))
-        .map_err(|e| FacilitatorError::Url(e.to_string()))?;
+        let verify = Url::parse(&format!("{}/api/v1/facilitator/verify", base))
+            .map_err(|e| FacilitatorError::Url(e.to_string()))?;
+        let settle = Url::parse(&format!("{}/api/v1/facilitator/settle", base))
+            .map_err(|e| FacilitatorError::Url(e.to_string()))?;
         Ok(Self {
             verify_url: verify,
             settle_url: settle,
@@ -144,10 +138,7 @@ fn synthetic_settlement_after_duplicate(
     proof: &Value,
     settle_error_snippet: &str,
 ) -> Value {
-    let payer = verify
-        .get("payer")
-        .cloned()
-        .unwrap_or_else(|| json!(null));
+    let payer = verify.get("payer").cloned().unwrap_or(Value::Null);
     let network = network_from_proof(proof);
     json!({
         "success": true,
@@ -174,8 +165,12 @@ mod tests {
 
     #[test]
     fn verify_valid_detection() {
-        assert!(verify_json_indicates_valid(&json!({"isValid": true, "payer": "x"})));
-        assert!(verify_json_indicates_valid(&json!({"valid": true, "payer": "x"})));
+        assert!(verify_json_indicates_valid(
+            &json!({"isValid": true, "payer": "x"})
+        ));
+        assert!(verify_json_indicates_valid(
+            &json!({"valid": true, "payer": "x"})
+        ));
         assert!(!verify_json_indicates_valid(&json!({"isValid": false})));
     }
 

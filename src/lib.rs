@@ -26,7 +26,7 @@ use std::env::VarError;
 pub struct SellerConfig {
     /// Base URL of this seller API (used in [`PaymentRequired::resource`] `url`).
     pub public_base_url: String,
-    /// pr402 facilitator origin, e.g. `https://preview.pr402.signer-payer.me` (no trailing slash).
+    /// pr402 facilitator origin, e.g. `https://preview.agent.pay402.me` (no trailing slash).
     pub facilitator_base_url: String,
     /// Resource description for 402 body.
     pub resource_description: String,
@@ -43,9 +43,7 @@ pub enum ConfigError {
 impl SellerConfig {
     pub fn from_env() -> Result<Self, ConfigError> {
         fn req(name: &'static str) -> Result<String, ConfigError> {
-            std::env::var(name).map_err(|e: VarError| {
-                ConfigError::Var(name, e.to_string())
-            })
+            std::env::var(name).map_err(|e: VarError| ConfigError::Var(name, e.to_string()))
         }
         Ok(Self {
             public_base_url: trim_slash(req("SELLER_PUBLIC_BASE_URL")?),

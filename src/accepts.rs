@@ -28,9 +28,8 @@ fn discrete_var(name: &'static str) -> Result<String, AcceptsBuildError> {
 /// Build `accepts` array for a [`super::PaymentRequired`](crate::PaymentRequired).
 pub fn accepts_from_env() -> Result<Vec<Value>, AcceptsBuildError> {
     if let Ok(raw) = std::env::var("X402_ACCEPTS_JSON") {
-        let v: Value = serde_json::from_str(raw.trim()).map_err(|e| {
-            AcceptsBuildError::AcceptsJson(e.to_string())
-        })?;
+        let v: Value = serde_json::from_str(raw.trim())
+            .map_err(|e| AcceptsBuildError::AcceptsJson(e.to_string()))?;
         let arr = v
             .as_array()
             .ok_or_else(|| AcceptsBuildError::AcceptsJson("expected JSON array".into()))?;
@@ -43,9 +42,9 @@ pub fn accepts_from_env() -> Result<Vec<Value>, AcceptsBuildError> {
     let amount = discrete_var("X402_AMOUNT")?;
     let pay_to = discrete_var("X402_PAY_TO")?;
     let max_timeout_raw = discrete_var("X402_MAX_TIMEOUT_SECONDS")?;
-    let max_timeout: u64 = max_timeout_raw.parse().map_err(|e| {
-        AcceptsBuildError::InvalidMaxTimeout(format!("{max_timeout_raw:?}: {e}"))
-    })?;
+    let max_timeout: u64 = max_timeout_raw
+        .parse()
+        .map_err(|e| AcceptsBuildError::InvalidMaxTimeout(format!("{max_timeout_raw:?}: {e}")))?;
 
     let extra: Option<Value> = match std::env::var("X402_ACCEPTS_EXTRA_JSON") {
         Ok(raw) if !raw.trim().is_empty() => Some(
@@ -101,9 +100,15 @@ mod tests {
         std::env::set_var("X402_NETWORK", "solana:dev");
         std::env::set_var("X402_ASSET", "So11111111111111111111111111111111111111112");
         std::env::set_var("X402_AMOUNT", "1");
-        std::env::set_var("X402_PAY_TO", "vault111111111111111111111111111111111111111");
+        std::env::set_var(
+            "X402_PAY_TO",
+            "vault111111111111111111111111111111111111111",
+        );
         std::env::set_var("X402_MAX_TIMEOUT_SECONDS", "60");
-        std::env::set_var("X402_ACCEPTS_EXTRA_JSON", r#"{"feePayer":"Fp","programId":"Pg"}"#);
+        std::env::set_var(
+            "X402_ACCEPTS_EXTRA_JSON",
+            r#"{"feePayer":"Fp","programId":"Pg"}"#,
+        );
         let v = accepts_from_env().unwrap();
         assert_eq!(v.len(), 1);
         let row = &v[0];
