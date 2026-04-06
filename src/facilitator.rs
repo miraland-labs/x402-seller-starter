@@ -79,11 +79,20 @@ impl FacilitatorClient {
             });
         }
 
+        let mut settle_body = body.clone();
+        if let Some(cid) = verify_value
+            .get("correlationId")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty())
+        {
+            merge_correlation_id(&mut settle_body, cid);
+        }
+
         let settle_res = self
             .client
             .post(self.settle_url.clone())
             .header("Content-Type", "application/json")
-            .json(body)
+            .json(&settle_body)
             .send()
             .await?;
         let status = settle_res.status();
@@ -148,6 +157,14 @@ fn synthetic_settlement_after_duplicate(
         "settlementNote": "verify succeeded; settle reported duplicate on-chain — treating as idempotent success",
         "settleErrorPreview": settle_error_snippet.chars().take(240).collect::<String>(),
     })
+}
+
+fn merge_correlation_id(body: &mut Value, cid: &str) {
+    if let Some(obj) = body.as_object_mut() {
+        if !obj.contains_key("correlationId") {
+            obj.insert("correlationId".to_string(), Value::String(cid.to_string()));
+        }
+    }
 }
 
 #[cfg(test)]
