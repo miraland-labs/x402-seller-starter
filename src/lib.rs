@@ -3,8 +3,11 @@
 //!
 //! - Build [`PaymentRequired`](crate::PaymentRequired) JSON from environment or a JSON blob.
 //! - [`exact_kind_extra_from_supported`](crate::exact_kind_extra_from_supported) to pull `extra` from facilitator **`GET /supported`**.
-//! - Optional [`FacilitatorClient`] for verify + settle when the buyer sends an `X-PAYMENT` proof
-//!   (treats common duplicate on-chain settle errors as success after a valid verify).
+//! - Optional [`FacilitatorClient`] for verify + settle when the buyer sends a `PAYMENT-SIGNATURE`
+//!   (v2) or legacy `X-PAYMENT` (v1) proof header (treats common duplicate on-chain settle errors
+//!   as success after a valid verify).
+//! - [`extract_payment_header_value`] reads `PAYMENT-SIGNATURE` with `X-PAYMENT` fallback.
+//! - [`encode_payment_response`] encodes a settlement result for the `PAYMENT-RESPONSE` header.
 //!
 //! Run the example server: `cargo run --example axum_server`
 
@@ -16,7 +19,10 @@ mod types;
 pub use accepts::{accepts_from_env, AcceptsBuildError};
 pub use facilitator::{FacilitatorClient, FacilitatorError};
 pub use supported::exact_kind_extra_from_supported;
-pub use types::{parse_x_payment_header, PaymentRequired, ResourceInfo, XPaymentParseError};
+pub use types::{
+    encode_payment_response, extract_payment_header_value, parse_payment_header, PaymentParseError,
+    PaymentRequired, ResourceInfo,
+};
 
 use serde_json::Value;
 use std::env::VarError;

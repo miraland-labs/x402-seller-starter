@@ -14,17 +14,17 @@ Use this to confirm the starter is **complete** for your own Payment Required se
 4. **Mint / amount** — **`X402_ASSET`** and **`X402_AMOUNT`** match what buyers will pay (USDC decimals, etc.).
 5. **`SELLER_PUBLIC_BASE_URL`** — real origin of **`resource.url`** (tunnel/public host in prod).
 6. **Vault on-chain** — correct PDA in JSON does not guarantee the account is initialized; provision per facilitator guide if settlement fails.
-7. **Protected route** — example supports **GET and POST** on the paid path; same 402 + `X-PAYMENT` pattern.
+7. **Protected route** — example supports **GET and POST** on the paid path; same 402 + `PAYMENT-SIGNATURE` pattern.
 
-## Buyer agent checklist (who pays `X-PAYMENT`)
+## Buyer agent checklist (who sends `PAYMENT-SIGNATURE`)
 
 Use this order so the **seller** is the one that calls facilitator **verify** + **settle** (standard x402 flow):
 
 1. **Request the resource** — `GET`/`POST` paid URL → receive **HTTP 402** and `accepts[]`.
 2. **Build unsigned payment** — `POST` facilitator `build-exact-payment-tx` (or your rail’s builder). Use **`scheme`** as required by that endpoint (pr402 accepts both `exact` and `v2:solana:exact` on current deployments).
 3. **Sign locally** — buyer signs the transaction at **`payerSignatureIndex`** from the build response.
-4. **Send proof to the seller** — retry the same HTTP request with header **`X-PAYMENT:`** set to the JSON body you would send to facilitator **verify** (signed tx inside `paymentPayload`).
-5. **Do not double-settle** — do **not** call facilitator **settle** yourself and then send `X-PAYMENT`, unless your architecture intentionally splits roles; the Axum example always **verify+settle**s on the server.
+4. **Send proof to the seller** — retry the same HTTP request with header **`PAYMENT-SIGNATURE:`** set to the JSON body you would send to facilitator **verify** (signed tx inside `paymentPayload`). Legacy `X-PAYMENT` is still accepted for backward compatibility.
+5. **Do not double-settle** — do **not** call facilitator **settle** yourself and then send `PAYMENT-SIGNATURE`, unless your architecture intentionally splits roles; the Axum example always **verify+settle**s on the server.
 
 If signing is slow, **rebuild** the unsigned tx so the blockhash stays fresh (see facilitator docs / `retry build` errors).
 
@@ -81,11 +81,11 @@ curl -sS "http://127.0.0.1:3000/api/free"
 curl -i  "http://127.0.0.1:3000/api/premium"   # 402 + JSON body
 ```
 
-5. With a valid `X-PAYMENT` proof (JSON string from your buyer flow—the same body you send to pr402 `verify`/`settle`):
+5. With a valid `PAYMENT-SIGNATURE` proof (JSON string from your buyer flow—the same body you send to pr402 `verify`/`settle`):
 
 ```bash
 curl -sS "http://127.0.0.1:3000/api/premium" \
-  -H "X-PAYMENT: {...}"
+  -H "PAYMENT-SIGNATURE: {...}"
 ```
 
 ## Where does payTo come from?

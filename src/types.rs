@@ -39,31 +39,44 @@ impl PaymentRequired {
 }
 
 #[derive(Debug, thiserror::Error)]
-pub enum XPaymentParseError {
-    #[error("X-PAYMENT must be UTF-8")]
+pub enum PaymentParseError {
+    #[error("payment header must be UTF-8")]
     Encoding,
-    #[error("X-PAYMENT must be JSON: {0}")]
+    #[error("payment header must be JSON: {0}")]
     Json(#[from] serde_json::Error),
-    #[error("X-PAYMENT is not JSON or valid base64 JSON: {0}")]
+    #[error("payment header is not JSON or valid base64 JSON: {0}")]
     Base64(String),
 }
 
-/// Parse the `X-PAYMENT` header value into the JSON object pr402 expects for verify/settle.
-pub fn parse_x_payment_header(raw: &str) -> Result<Value, XPaymentParseError> {
+/// Parse the `PAYMENT-SIGNATURE` (v2) or legacy `X-PAYMENT` (v1) header value
+/// into the JSON object pr402 expects for verify/settle.
+/// Accepts both raw JSON and base64-encoded JSON.
+pub fn parse_payment_header(raw: &str) -> Result<Value, PaymentParseError> {
     let trimmed = raw.trim();
     if let Ok(v) = serde_json::from_str(trimmed) {
         return Ok(v);
     }
     let bytes = B64
         .decode(trimmed)
-        .map_err(|e| XPaymentParseError::Base64(e.to_string()))?;
-    let s = String::from_utf8(bytes).map_err(|_| XPaymentParseError::Encoding)?;
+        .map_err(|e| PaymentParseError::Base64(e.to_string()))?;
+    let s = String::from_utf8(bytes).map_err(|_| PaymentParseError::Encoding)?;
     Ok(serde_json::from_str(&s)?)
+}
+
+/// Extract payment proof from HTTP headers with v2/v1 fallback.
+/// Reads `PAYMENT-SIGNATURE` first (x402 v2), then `X-PAYMENT` (v1 compat).
+pub fn extract_payment_header_value(get_header: impl Fn(&str) -> Option<String>) -> Option<String> {
+    get_header("PAYMENT-SIGNATURE").or_else(|| get_header("X-PAYMENT"))
+}
+
+/// Encode a settlement result as a base64 string for the `PAYMENT-RESPONSE` header.
+pub fn encode_payment_response(settle_result: &Value) -> String {
+    B64.encode(settle_result.to_string())
 }
 
 #[cfg(test)]
 mod tests {
-    use super::parse_x_payment_header;
+    use super::*;
     use base64::engine::general_purpose::STANDARD as B64;
     use base64::Engine;
     use serde_json::json;
@@ -71,7 +84,7 @@ mod tests {
     #[test]
     fn parses_raw_json() {
         let body = json!({"x402Version": 2, "paymentPayload": {}, "paymentRequirements": {}});
-        let parsed = parse_x_payment_header(&body.to_string()).expect("raw JSON should parse");
+        let parsed = parse_payment_header(&body.to_string()).expect("raw JSON should parse");
         assert_eq!(parsed["x402Version"], 2);
     }
 
@@ -79,7 +92,35 @@ mod tests {
     fn parses_base64_json() {
         let body = json!({"x402Version": 2, "paymentPayload": {}, "paymentRequirements": {}});
         let encoded = B64.encode(body.to_string());
-        let parsed = parse_x_payment_header(&encoded).expect("base64 JSON should parse");
+        let parsed = parse_payment_header(&encoded).expect("base64 JSON should parse");
         assert_eq!(parsed["x402Version"], 2);
+    }
+
+    #[test]
+    fn extract_prefers_v2_header() {
+        let result = extract_payment_header_value(|name| match name {
+            "PAYMENT-SIGNATURE" => Some("v2_value".into()),
+            "X-PAYMENT" => Some("v1_value".into()),
+            _ => None,
+        });
+        assert_eq!(result.as_deref(), Some("v2_value"));
+    }
+
+    #[test]
+    fn extract_falls_back_to_v1() {
+        let result = extract_payment_header_value(|name| match name {
+            "X-PAYMENT" => Some("v1_value".into()),
+            _ => None,
+        });
+        assert_eq!(result.as_deref(), Some("v1_value"));
+    }
+
+    #[test]
+    fn encode_payment_response_roundtrip() {
+        let settle = json!({"success": true, "payer": "abc", "network": "solana:devnet"});
+        let encoded = encode_payment_response(&settle);
+        let decoded: Value = serde_json::from_slice(&B64.decode(&encoded).unwrap()).unwrap();
+        assert_eq!(decoded["success"], true);
+        assert_eq!(decoded["payer"], "abc");
     }
 }

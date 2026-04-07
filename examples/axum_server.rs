@@ -1,4 +1,9 @@
-//! Example Axum server: free route, paid route with HTTP 402 + optional `X-PAYMENT` settlement via pr402.
+//! Example Axum server: free route, paid route with HTTP 402 + `PAYMENT-SIGNATURE` settlement via pr402.
+//!
+//! x402 v2 header flow:
+//!   - Server -> Client: `PAYMENT-REQUIRED` header (base64 JSON) on HTTP 402
+//!   - Client -> Server: `PAYMENT-SIGNATURE` header (v2) or `X-PAYMENT` (v1 compat)
+//!   - Server -> Client: `PAYMENT-RESPONSE` header (base64 JSON) on HTTP 200 or 402 after settle attempt
 //!
 //! Run (after `cp .env.example .env` the example loads `.env` automatically; or export vars yourself).
 //! Set **`X402_PAY_TO`** — see README *Quick start → Step 0* (`cargo run --example find_payto`).
@@ -23,8 +28,9 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use x402_seller_starter::{
-    accepts_from_env, build_payment_required, parse_x_payment_header, payment_required_json,
-    FacilitatorClient, SellerConfig,
+    accepts_from_env, build_payment_required, encode_payment_response,
+    extract_payment_header_value, parse_payment_header, payment_required_json, FacilitatorClient,
+    SellerConfig,
 };
 
 #[derive(Clone)]
@@ -114,22 +120,27 @@ async fn paid_gate(
     let pr = build_payment_required(&s.config, &s.paid_path)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    let raw_payment = headers
-        .get("x-payment")
-        .or_else(|| headers.get("X-PAYMENT"))
-        .and_then(|v| v.to_str().ok());
+    // x402 v2: read PAYMENT-SIGNATURE first, fall back to X-PAYMENT (v1 compat)
+    let raw_payment = extract_payment_header_value(|name| {
+        headers
+            .get(name)
+            .and_then(|v| v.to_str().ok())
+            .map(String::from)
+    });
 
     let Some(raw) = raw_payment else {
-        let body = payment_required_json(&pr.with_error("X-PAYMENT header is required (x402 v2)"))
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+        let body =
+            payment_required_json(&pr.with_error("PAYMENT-SIGNATURE header is required (x402 v2)"))
+                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         return Ok((StatusCode::PAYMENT_REQUIRED, Json(body)).into_response());
     };
 
-    let proof = match parse_x_payment_header(raw) {
+    let proof = match parse_payment_header(&raw) {
         Ok(v) => v,
         Err(e) => {
-            let body = payment_required_json(&pr.with_error(format!("Invalid X-PAYMENT: {e}")))
-                .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+            let body =
+                payment_required_json(&pr.with_error(format!("Invalid payment header: {e}")))
+                    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             return Ok((StatusCode::PAYMENT_REQUIRED, Json(body)).into_response());
         }
     };
@@ -145,20 +156,30 @@ async fn paid_gate(
             } else {
                 "payment verified and settled"
             };
-            Ok((
-                StatusCode::OK,
-                Json(json!({
-                    "tier": "paid",
-                    "message": message,
-                    "settlement": settled,
-                })),
-            )
-                .into_response())
+            let body = json!({
+                "tier": "paid",
+                "message": message,
+                "settlement": settled,
+            });
+            // x402 v2: emit PAYMENT-RESPONSE header with base64-encoded settlement result
+            let mut res = Json(&body).into_response();
+            if let Ok(hv) = axum::http::HeaderValue::from_str(&encode_payment_response(&settled)) {
+                res.headers_mut().insert("PAYMENT-RESPONSE", hv);
+            }
+            Ok(res)
         }
         Err(e) => {
+            let error_result = json!({"success": false, "errorReason": e.to_string()});
             let body = payment_required_json(&pr.with_error(format!("Facilitator: {e}")))
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
-            Ok((StatusCode::PAYMENT_REQUIRED, Json(body)).into_response())
+            let mut res = (StatusCode::PAYMENT_REQUIRED, Json(body)).into_response();
+            // x402 v2: emit PAYMENT-RESPONSE on failure too
+            if let Ok(hv) =
+                axum::http::HeaderValue::from_str(&encode_payment_response(&error_result))
+            {
+                res.headers_mut().insert("PAYMENT-RESPONSE", hv);
+            }
+            Ok(res)
         }
     }
 }
