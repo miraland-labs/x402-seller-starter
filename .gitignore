@@ -3,3 +3,4 @@ demo-wallets
 .env
 **/*.rs.bk
 .venv-buyer/
+.DS_Store
