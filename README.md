@@ -33,6 +33,8 @@ If signing is slow, **rebuild** the unsigned tx so the blockhash stays fresh (se
 | Question | Answer |
 |----------|--------|
 | **What must I have to sell with pr402?** | A correct **`payTo`** in your 402 `accepts[]` (vault for **exact**, escrow PDA for **sla-escrow**, …). Without it, buyers cannot pay and verify cannot match. |
+| **Mint allowlist** | If the facilitator sets **`PR402_ALLOWED_PAYMENT_MINTS`**, every **`accepts[].asset`** you publish must be in that list (include **`11111111111111111111111111111111`** for native SOL if applicable). Buyers otherwise fail **`build-*`**, **`/verify`**, and **`/settle`**. |
+| **Machine-readable `payTo` rules** | On the facilitator: **`GET /api/v1/facilitator/capabilities`** → **`agentManifest.payToSemantics`** (typically **`/agent-payTo-semantics.json`**). See upstream [agent-integration.md](https://github.com/miralandlabs/pr402/blob/main/public/agent-integration.md). |
 | **How do I *find* `payTo` for `v2:solana:exact`?** | **`GET /supported`** gives `programId` for your network. **`payTo`** is the **vault PDA** for your merchant pubkey (deterministic seeds). Run **`cargo run --example find_payto`** — it only needs `/supported` + `MERCHANT_WALLET`; it does **not** call `build-tx` unless you set `SELLER_FETCH_ONBOARD_TX=1`. |
 | **What is “onboard” then?** | **Provisioning / incentives** (sign a tx so the vault exists on-chain, fee tier, etc.). That is **not** the same as *looking up* `payTo`: the payout address for exact is still that **vault PDA**, whether or not you have signed onboarding yet. |
 | **Do I need `solana-sdk` in my seller app?** | **No.** The **library** is `serde` + `reqwest` + `thiserror`. Only the **`find_payto`** example adds dev-dep **`solana-pubkey`** to derive the PDA. |
@@ -95,7 +97,7 @@ curl -sS "http://127.0.0.1:3000/api/premium" \
 | Rail | What `payTo` is | How you learn it (this repo) |
 |------|-----------------|------------------------------|
 | **`v2:solana:exact`** | **Vault PDA** for your merchant | **`find_payto`**: `/supported` → `programId` + `MERCHANT_WALLET` → print **`X402_PAY_TO`**. Same address the protocol uses as the payout vault; onboarding is about **creating** that account on-chain, not about discovering the address. |
-| **SLA escrow** | **Escrow PDA** | Different derivation (mint, bank, …). Use facilitator docs / escrow builder for that rail — `find_payto` is **exact-only** today. |
+| **SLA escrow** | **Escrow PDA** | Different derivation (mint, bank, …). **`accepts[].extra`** must include **`beneficiary`** or **`merchantWallet`** (seller payout identity) so pr402 build/verify can set **`FundPayment.seller`**. Optional sponsored Solana fees for buyers: **`facilitatorPaysTransactionFees: true`** on `POST .../build-sla-escrow-payment-tx` is allowed only if the **facilitator operator** enables **`PR402_SLA_ESCROW_ALLOW_FACILITATOR_FEE_SPONSORSHIP`** on the **facilitator** host (Vercel/env for pr402)—**not** an env var on your seller service. Use facilitator docs / `build-sla-escrow-payment-tx` for that rail — `find_payto` is **exact-only** today. |
 
 **Practical discovery**
 
