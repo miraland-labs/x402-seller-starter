@@ -35,7 +35,7 @@ If signing is slow, **rebuild** the unsigned tx so the blockhash stays fresh (se
 | **What must I have to sell with pr402?** | A correct **`payTo`** in your 402 `accepts[]` (vault for **exact**, escrow PDA for **sla-escrow**, …). Without it, buyers cannot pay and verify cannot match. |
 | **Mint allowlist** | If the facilitator sets **`PR402_ALLOWED_PAYMENT_MINTS`**, every **`accepts[].asset`** you publish must be in that list (include **`11111111111111111111111111111111`** for native SOL if applicable). Buyers otherwise fail **`build-*`**, **`/verify`**, and **`/settle`**. |
 | **Machine-readable `payTo` rules** | On the facilitator: **`GET /api/v1/facilitator/capabilities`** → **`agentManifest.payToSemantics`** (typically **`/agent-payTo-semantics.json`**). See upstream [agent-integration.md](https://github.com/miralandlabs/pr402/blob/main/public/agent-integration.md). |
-| **How do I *find* `payTo` for `v2:solana:exact`?** | **`GET /supported`** gives `programId` for your network. **`payTo`** is the **vault PDA** for your merchant pubkey (deterministic seeds). Run **`cargo run --example find_payto`** — it only needs `/supported` + `MERCHANT_WALLET`; it does **not** call `build-tx` unless you set `SELLER_FETCH_ONBOARD_TX=1`. |
+| **How do I *find* `payTo` for `v2:solana:exact`?** | **`GET /supported`** gives `programId` for your network. **`payTo`** is the **vault PDA** for your merchant pubkey (deterministic seeds). Run **`cargo run --example find_payto`** — it only needs `/supported` + `MERCHANT_WALLET`; it does **not** call **`POST /onboard/provision`** unless you set `SELLER_FETCH_ONBOARD_TX=1` (optional `SELLER_PROVISION_ASSET`, default **`USDC`**). |
 | **What is “onboard” then?** | **Provisioning / incentives** (sign a tx so the vault exists on-chain, fee tier, etc.). That is **not** the same as *looking up* `payTo`: the payout address for exact is still that **vault PDA**, whether or not you have signed onboarding yet. |
 | **Do I need `solana-sdk` in my seller app?** | **No.** The **library** is `serde` + `reqwest` + `thiserror`. Only the **`find_payto`** example adds dev-dep **`solana-pubkey`** to derive the PDA. |
 | **Do I set `payTo` in `.env`?** | **Yes** for this demo: copy the **`X402_PAY_TO=...`** line from `find_payto`. |
@@ -64,7 +64,7 @@ cp .env.example .env
 cargo run --example find_payto
 ```
 
-Prints **`X402_PAY_TO=...`**, **`X402_ACCEPTS_EXTRA_JSON='...'`** (from live `/supported`), and the full kind. Optional: **`SELLER_FETCH_ONBOARD_TX=1`** for an unsigned provisioning tx — **not required** for `payTo` / `extra`.
+Prints **`X402_PAY_TO=...`**, **`X402_ACCEPTS_EXTRA_JSON='...'`** (from live `/supported`), and the full kind. Optional: **`SELLER_FETCH_ONBOARD_TX=1`** fetches **`POST /api/v1/facilitator/onboard/provision`** (override **`SELLER_PROVISION_ASSET`** if not **`USDC`**) — **not required** for `payTo` / `extra`.
 
 ### Run the Axum example
 

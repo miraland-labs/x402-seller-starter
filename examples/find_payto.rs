@@ -4,14 +4,14 @@
 //! A value for **`accepts[].payTo`** / **`X402_PAY_TO`** that matches what the facilitator verifies.
 //! For the **exact** rail on Solana, that is the **vault PDA** for your merchant key.
 //!
-//! ## How this example finds it (no `build-tx` unless you opt in)
+//! ## How this example finds it (no `/onboard/provision` unless you opt in)
 //! 1. **`GET /api/v1/facilitator/supported`** → `programId` (+ `extra`) for `scheme=exact` and your `X402_NETWORK`.
 //! 2. **`MERCHANT_WALLET`** (base58) = your seller pubkey.
 //! 3. **Derive** `find_program_address(["vault", merchant], programId)` — same layout as UniversalSettle docs.
 //!
-//! That is how you **find `payTo` without** calling `build-tx`. Signing an onboard transaction is a **separate**
-//! step (provisioning / fee tier); set **`SELLER_FETCH_ONBOARD_TX=1`** only if you also want the facilitator
-//! to return an unsigned provisioning tx.
+//! That is how you **find `payTo` without** calling the facilitator provision endpoint. Signing a provision tx is a **separate**
+//! step (SplitVault + per-asset surface); set **`SELLER_FETCH_ONBOARD_TX=1`** only if you also want the facilitator
+//! to return an unsigned provisioning tx. Set **`SELLER_PROVISION_ASSET`** (e.g. `USDC`, `SOL`, or a mint) for that request — default **`USDC`** (agentic flows usually settle in USDC).
 //!
 //! **Library dependency note:** only this **example** uses dev-dep `solana-pubkey` (+ `curve25519`) for PDA math.
 //! Your seller HTTP service stays `serde` + `reqwest` + `thiserror`.
@@ -138,10 +138,19 @@ async fn run() -> Result<(), DemoErr> {
         .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
         .unwrap_or(false)
     {
-        let onboard_url = format!("{base}/api/v1/facilitator/onboard/build-tx?wallet={wallet}");
-        println!("(opt-in SELLER_FETCH_ONBOARD_TX) GET {onboard_url}\n");
+        let asset = std::env::var("SELLER_PROVISION_ASSET").unwrap_or_else(|_| "USDC".to_string());
+        let provision_url = format!("{base}/api/v1/facilitator/onboard/provision");
+        println!(
+            "(opt-in SELLER_FETCH_ONBOARD_TX) POST {provision_url}  body: {{ \"wallet\", \"asset\": {:?} }}\n",
+            asset
+        );
+        let body = serde_json::json!({
+            "wallet": wallet.trim(),
+            "asset": asset.trim(),
+        });
         let build: Value = client
-            .get(&onboard_url)
+            .post(&provision_url)
+            .json(&body)
             .send()
             .await
             .map_err(|x| e(x.to_string()))?
