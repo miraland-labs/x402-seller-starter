@@ -48,7 +48,7 @@ pub enum PaymentParseError {
     Base64(String),
 }
 
-/// Parse the `PAYMENT-SIGNATURE` (v2) or legacy `X-PAYMENT` (v1) header value
+/// Parse the `PAYMENT-SIGNATURE` (x402 v2) header value
 /// into the JSON object pr402 expects for verify/settle.
 /// Accepts both raw JSON and base64-encoded JSON.
 pub fn parse_payment_header(raw: &str) -> Result<Value, PaymentParseError> {
@@ -63,10 +63,9 @@ pub fn parse_payment_header(raw: &str) -> Result<Value, PaymentParseError> {
     Ok(serde_json::from_str(&s)?)
 }
 
-/// Extract payment proof from HTTP headers with v2/v1 fallback.
-/// Reads `PAYMENT-SIGNATURE` first (x402 v2), then `X-PAYMENT` (v1 compat).
+/// Extract payment proof: `PAYMENT-SIGNATURE` only (x402 v2).
 pub fn extract_payment_header_value(get_header: impl Fn(&str) -> Option<String>) -> Option<String> {
-    get_header("PAYMENT-SIGNATURE").or_else(|| get_header("X-PAYMENT"))
+    get_header("PAYMENT-SIGNATURE")
 }
 
 /// Encode a settlement result as a base64 string for the `PAYMENT-RESPONSE` header.
@@ -97,22 +96,21 @@ mod tests {
     }
 
     #[test]
-    fn extract_prefers_v2_header() {
+    fn extract_reads_payment_signature() {
         let result = extract_payment_header_value(|name| match name {
-            "PAYMENT-SIGNATURE" => Some("v2_value".into()),
-            "X-PAYMENT" => Some("v1_value".into()),
+            "PAYMENT-SIGNATURE" => Some("proof".into()),
             _ => None,
         });
-        assert_eq!(result.as_deref(), Some("v2_value"));
+        assert_eq!(result.as_deref(), Some("proof"));
     }
 
     #[test]
-    fn extract_falls_back_to_v1() {
+    fn extract_missing_without_payment_signature() {
         let result = extract_payment_header_value(|name| match name {
-            "X-PAYMENT" => Some("v1_value".into()),
+            "X-PAYMENT" => Some("ignored".into()),
             _ => None,
         });
-        assert_eq!(result.as_deref(), Some("v1_value"));
+        assert_eq!(result, None);
     }
 
     #[test]

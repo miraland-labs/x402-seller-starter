@@ -1,6 +1,7 @@
 /target
 demo-wallets
 .env
+.env.*
 **/*.rs.bk
 .venv-buyer/
 .DS_Store

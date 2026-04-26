@@ -2,7 +2,7 @@
 //!
 //! x402 v2 header flow:
 //!   - Server -> Client: `PAYMENT-REQUIRED` header (base64 JSON) on HTTP 402
-//!   - Client -> Server: `PAYMENT-SIGNATURE` header (v2) or `X-PAYMENT` (v1 compat)
+//!   - Client -> Server: `PAYMENT-SIGNATURE` header (x402 v2)
 //!   - Server -> Client: `PAYMENT-RESPONSE` header (base64 JSON) on HTTP 200 or 402 after settle attempt
 //!
 //! Run (after `cp .env.example .env` the example loads `.env` automatically; or export vars yourself).
@@ -120,7 +120,7 @@ async fn paid_gate(
     let pr = build_payment_required(&s.config, &s.paid_path)
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
-    // x402 v2: read PAYMENT-SIGNATURE first, fall back to X-PAYMENT (v1 compat)
+    // x402 v2: PAYMENT-SIGNATURE only
     let raw_payment = extract_payment_header_value(|name| {
         headers
             .get(name)

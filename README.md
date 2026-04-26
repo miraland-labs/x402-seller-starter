@@ -23,7 +23,7 @@ Use this order so the **seller** is the one that calls facilitator **verify** + 
 1. **Request the resource** — `GET`/`POST` paid URL → receive **HTTP 402** and `accepts[]`.
 2. **Build unsigned payment** — `POST` facilitator `build-exact-payment-tx` (or your rail’s builder). Use **`scheme`** as required by that endpoint (pr402 accepts both `exact` and `v2:solana:exact` on current deployments).
 3. **Sign locally** — buyer signs the transaction at **`payerSignatureIndex`** from the build response.
-4. **Send proof to the seller** — retry the same HTTP request with header **`PAYMENT-SIGNATURE:`** set to the JSON body you would send to facilitator **verify** (signed tx inside `paymentPayload`). Legacy `X-PAYMENT` is still accepted for backward compatibility.
+4. **Send proof to the seller** — retry the same HTTP request with header **`PAYMENT-SIGNATURE:`** set to the JSON body you would send to facilitator **verify** (signed tx inside `paymentPayload`).
 5. **Do not double-settle** — do **not** call facilitator **settle** yourself and then send `PAYMENT-SIGNATURE`, unless your architecture intentionally splits roles; the Axum example always **verify+settle**s on the server.
 
 If signing is slow, **rebuild** the unsigned tx so the blockhash stays fresh (see facilitator docs / `retry build` errors).

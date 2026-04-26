@@ -3,10 +3,9 @@
 //!
 //! - Build [`PaymentRequired`](crate::PaymentRequired) JSON from environment or a JSON blob.
 //! - [`exact_kind_extra_from_supported`](crate::exact_kind_extra_from_supported) to pull `extra` from facilitator **`GET /supported`**.
-//! - Optional [`FacilitatorClient`] for verify + settle when the buyer sends a `PAYMENT-SIGNATURE`
-//!   (v2) or legacy `X-PAYMENT` (v1) proof header (treats common duplicate on-chain settle errors
-//!   as success after a valid verify).
-//! - [`extract_payment_header_value`] reads `PAYMENT-SIGNATURE` with `X-PAYMENT` fallback.
+//! - Optional [`FacilitatorClient`] for verify + settle when the buyer sends `PAYMENT-SIGNATURE`
+//!   (x402 v2; treats common duplicate on-chain settle errors as success after a valid verify).
+//! - [`extract_payment_header_value`] reads `PAYMENT-SIGNATURE` only.
 //! - [`encode_payment_response`] encodes a settlement result for the `PAYMENT-RESPONSE` header.
 //!
 //! Run the example server: `cargo run --example axum_server`
