@@ -21,7 +21,7 @@ Use this to confirm the starter is **complete** for your own Payment Required se
 Use this order so the **seller** is the one that calls facilitator **verify** + **settle** (standard x402 flow):
 
 1. **Request the resource** — `GET`/`POST` paid URL → receive **HTTP 402** and `accepts[]`.
-2. **Build unsigned payment** — `POST` facilitator `build-exact-payment-tx` (or your rail’s builder). Use **`scheme`** as required by that endpoint (pr402 accepts both `exact` and `v2:solana:exact` on current deployments).
+2. **Build unsigned payment** — `POST` facilitator `build-exact-payment-tx` (or your rail’s builder). The **request** may use **`scheme`** `exact` or **`v2:solana:exact`** (SLA: `sla-escrow` or **`v2:solana:sla-escrow`**). The facilitator’s **`verifyBodyTemplate`** uses the wire form (`exact` / `sla-escrow`) automatically.
 3. **Sign locally** — buyer signs the transaction at **`payerSignatureIndex`** from the build response.
 4. **Send proof to the seller** — retry the same HTTP request with header **`PAYMENT-SIGNATURE:`** set to the JSON body you would send to facilitator **verify** (signed tx inside `paymentPayload`).
 5. **Do not double-settle** — do **not** call facilitator **settle** yourself and then send `PAYMENT-SIGNATURE`, unless your architecture intentionally splits roles; the Axum example always **verify+settle**s on the server.
