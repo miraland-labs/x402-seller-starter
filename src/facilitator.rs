@@ -153,7 +153,7 @@ fn synthetic_settlement_after_duplicate(
         "success": true,
         "payer": payer,
         "network": network,
-        "transaction": null,
+        "transaction": "",
         "settlementNote": "verify succeeded; settle reported duplicate on-chain — treating as idempotent success",
         "settleErrorPreview": settle_error_snippet.chars().take(240).collect::<String>(),
     })
@@ -201,5 +201,6 @@ mod tests {
         assert_eq!(v["success"], true);
         assert_eq!(v["payer"], "PAYER1");
         assert_eq!(v["network"], "solana:devnet");
+        assert_eq!(v["transaction"], "");
     }
 }
