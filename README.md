@@ -40,7 +40,7 @@ If signing is slow, **rebuild** the unsigned tx so the blockhash stays fresh (se
 | **Do I need `solana-sdk` in my seller app?** | **No.** The **library** is `serde` + `reqwest` + `thiserror`. Only the **`find_payto`** example adds dev-dep **`solana-pubkey`** to derive the PDA. |
 | **Do I set `payTo` in `.env`?** | **Yes** for this demo: copy the **`X402_PAY_TO=...`** line from `find_payto`. |
 
-Human-written guide for incentives / JIT paths: [onboarding_guide.md](https://preview.agent.pay402.me/onboarding_guide.md) (same host as your facilitator). Buyer/seller overview: [agent-integration.md](https://github.com/miralandlabs/pr402/blob/main/public/agent-integration.md).
+Human-written guide for incentives / JIT paths: [onboarding_guide.md](https://preview.ipay.sh/onboarding_guide.md) (recommended; same content at [preview.agent.pay402.me](https://preview.agent.pay402.me/onboarding_guide.md)). Buyer/seller overview: [agent-integration.md](https://github.com/miralandlabs/pr402/blob/main/public/agent-integration.md).
 
 ## Layout
 

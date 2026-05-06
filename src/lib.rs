@@ -31,7 +31,7 @@ use std::env::VarError;
 pub struct SellerConfig {
     /// Base URL of this seller API (used in [`PaymentRequired::resource`] `url`).
     pub public_base_url: String,
-    /// pr402 facilitator origin, e.g. `https://preview.agent.pay402.me` (no trailing slash).
+    /// pr402 facilitator origin, e.g. `https://preview.ipay.sh` (recommended) or `https://preview.agent.pay402.me` (same APIs; no trailing slash).
     pub facilitator_base_url: String,
     /// Resource description for 402 body.
     pub resource_description: String,
