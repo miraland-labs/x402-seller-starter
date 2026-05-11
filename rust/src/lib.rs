@@ -99,8 +99,12 @@ pub fn build_payment_required(
             mime_type: config.resource_mime_type.clone(),
         },
         accepts,
+        // `extensions` is the x402 v2 spec's escape hatch for non-standard hints. Namespace
+        // our key with a `pr402` prefix so a buyer sees unambiguously which facilitator
+        // implementation this 402 is pointing at. Buyers that don't recognize the key
+        // should ignore it; buyers targeting pr402 can use it to skip a /supported probe.
         extensions: serde_json::json!({
-            "facilitatorUrl": config.facilitator_base_url,
+            "pr402FacilitatorUrl": config.facilitator_base_url,
         }),
     })
 }

@@ -1,9 +1,13 @@
 //! Example Axum server: free route, paid route with HTTP 402 + `PAYMENT-SIGNATURE` settlement via pr402.
 //!
-//! x402 v2 header flow:
-//!   - Server -> Client: `PAYMENT-REQUIRED` header (base64 JSON) on HTTP 402
-//!   - Client -> Server: `PAYMENT-SIGNATURE` header (x402 v2)
-//!   - Server -> Client: `PAYMENT-RESPONSE` header (base64 JSON) on HTTP 200 or 402 after settle attempt
+//! x402 v2 wire flow this example implements:
+//!   - Server -> Client: HTTP 402 with the payment-required JSON **in the response body**
+//!     (the spec also defines an optional `PAYMENT-REQUIRED` response header; this example
+//!     does not emit it since the JSON body is the interop default and what pr402 buyers read).
+//!   - Client -> Server: `PAYMENT-SIGNATURE` request header carrying the signed proof JSON.
+//!   - Server -> Client: `PAYMENT-RESPONSE` response header (base64 JSON of the settle result),
+//!     emitted on both HTTP 200 (success) and HTTP 402 (failed / retry-needed) after the
+//!     facilitator verify+settle attempt.
 //!
 //! Run (after `cp .env.example .env` the example loads `.env` automatically; or export vars yourself).
 //! Set **`X402_PAY_TO`** — see README *Quick start → Step 0* (`cargo run --example find_payto`).

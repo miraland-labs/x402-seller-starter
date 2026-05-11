@@ -64,8 +64,14 @@ pub fn parse_payment_header(raw: &str) -> Result<Value, PaymentParseError> {
 }
 
 /// Extract payment proof: `PAYMENT-SIGNATURE` only (x402 v2).
+///
+/// The name is queried in lowercase (`payment-signature`) because HTTP header names are
+/// case-insensitive per RFC 7230 §3.2. Most HTTP stacks (Axum / hyper's `HeaderMap`, Actix,
+/// warp) already lowercase at insert time, but passing the lowercased name here is a
+/// portability belt: callers can pass through the name verbatim without worrying about
+/// case rules in their framework of choice.
 pub fn extract_payment_header_value(get_header: impl Fn(&str) -> Option<String>) -> Option<String> {
-    get_header("PAYMENT-SIGNATURE")
+    get_header("payment-signature")
 }
 
 /// Encode a settlement result as a base64 string for the `PAYMENT-RESPONSE` header.
@@ -98,7 +104,7 @@ mod tests {
     #[test]
     fn extract_reads_payment_signature() {
         let result = extract_payment_header_value(|name| match name {
-            "PAYMENT-SIGNATURE" => Some("proof".into()),
+            "payment-signature" => Some("proof".into()),
             _ => None,
         });
         assert_eq!(result.as_deref(), Some("proof"));
@@ -107,7 +113,7 @@ mod tests {
     #[test]
     fn extract_missing_without_payment_signature() {
         let result = extract_payment_header_value(|name| match name {
-            "X-PAYMENT" => Some("ignored".into()),
+            "x-payment" => Some("ignored".into()),
             _ => None,
         });
         assert_eq!(result, None);
