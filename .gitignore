@@ -1,7 +1,28 @@
-/target
-demo-wallets
+.DS_Store
 .env
 .env.*
+
+# --- Rust ---
+/rust/target/
+rust/target/
 **/*.rs.bk
-.venv-buyer/
-.DS_Store
+Cargo.lock.bak
+
+# --- TypeScript ---
+/typescript/node_modules/
+typescript/node_modules/
+/typescript/dist/
+
+# --- Python ---
+/python/.venv/
+python/.venv/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+/python/build/
+/python/dist/
+
+# --- Editor / misc ---
+.vscode/
+.idea/

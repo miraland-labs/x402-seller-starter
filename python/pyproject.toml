@@ -1,0 +1,25 @@
+[project]
+name = "x402-seller-starter-python"
+version = "0.1.0"
+description = "Reference Python seller for pr402 / x402 v2: HTTP 402 Payment Required + PAYMENT-SIGNATURE verify+settle."
+license = "Apache-2.0"
+requires-python = ">=3.11"
+dependencies = [
+    # FastAPI + uvicorn for the HTTP layer; httpx for the facilitator client.
+    "fastapi>=0.115,<0.120",
+    "httpx>=0.27,<0.29",
+    "python-dotenv>=1.0,<2.0",
+    "solders>=0.21,<0.30",
+    "uvicorn[standard]>=0.30,<0.40",
+]
+
+[project.scripts]
+x402-seller-start = "x402_seller_starter.server:main"
+x402-seller-find-payto = "x402_seller_starter.find_payto:main"
+
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]

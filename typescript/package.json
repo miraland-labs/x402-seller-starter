@@ -1,0 +1,26 @@
+{
+  "name": "x402-seller-starter-ts",
+  "version": "0.1.0",
+  "description": "Reference TypeScript seller for pr402 / x402 v2: HTTP 402 Payment Required + PAYMENT-SIGNATURE verify+settle.",
+  "license": "Apache-2.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "start": "tsx src/server.ts",
+    "find-payto": "tsx src/find-payto.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@solana/web3.js": "^1.98.0",
+    "dotenv": "^16.4.5",
+    "express": "^4.21.2"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -43,9 +43,20 @@ impl FacilitatorClient {
 
     /// POST the same JSON body to verify then settle; returns the settle response JSON.
     ///
-    /// If **settle** fails with an on-chain “already processed” error but **verify** succeeded,
-    /// returns a synthetic success value so the seller can still return paid content (idempotent /
-    /// older facilitators). Current pr402 may already normalize duplicate settle to HTTP 200.
+    /// **Legacy fallback for duplicate settle.** Current pr402 normalizes duplicate on-chain
+    /// settle attempts (e.g. "This transaction has already been processed") into HTTP 200 with
+    /// an idempotent success response, so you will rarely see the fallback branch fire. We
+    /// keep it so this starter also runs against older pr402 versions and any facilitator
+    /// that hasn't normalized duplicate-settle yet: if settle returns HTTP 4xx/5xx with a
+    /// duplicate-processed signature in the body and verify had succeeded, we synthesize a
+    /// success value so the seller can still return paid content (payment already landed).
+    ///
+    /// **`isValid: false` is not an HTTP error.** The facilitator returns HTTP 200 with
+    /// `{ isValid: false, invalidReason: "..." }` for semantically invalid proofs (wrong
+    /// amount, wrong payee, expired blockhash, etc.). Those are caught by
+    /// `verify_json_indicates_valid` and converted to `FacilitatorError::Http` so the seller
+    /// can surface `invalidReason` to the buyer. Sellers that want to forward the reason
+    /// verbatim should match on the `body` field of the returned error.
     pub async fn verify_and_settle(&self, body: &Value) -> Result<Value, FacilitatorError> {
         let verify_res = self
             .client

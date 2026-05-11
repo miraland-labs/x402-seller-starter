@@ -14,7 +14,7 @@ This file mirrors the README **Buyer agent checklist** for easy sharing.
 2. Call facilitator **build** for your rail (e.g. `build-exact-payment-tx`) with `payer`, `accepted` (one `accepts[]` line), `resource`.
 3. Sign the returned transaction at `payerSignatureIndex`.
 4. Put the signed base64 tx into the verify body (same shape as facilitator **verify**).
-5. **Retry the seller** with header: **`PAYMENT-SIGNATURE: <JSON body>`** (raw UTF-8 JSON; base64 of that JSON is also accepted by many servers).
+5. **Retry the seller** with header: **`PAYMENT-SIGNATURE: <JSON body>`**. Raw UTF-8 JSON is the interop default; base64-of-that-JSON is also accepted by this starter and by pr402.
 
 Do **not** call facilitator **settle** from the buyer if the seller will **settle** — that runs settlement twice.
 
