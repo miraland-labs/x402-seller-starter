@@ -83,8 +83,15 @@ async function main() {
   console.log();
 
   if (exact.extra) {
+    // Inject merchantWallet into extra so the facilitator can always resolve the real
+    // seller identity, even before the vault is activated on-chain (JIT provision path).
+    const extraWithMerchant = { ...exact.extra };
+    if (!("merchantWallet" in extraWithMerchant)) {
+      extraWithMerchant["merchantWallet"] = wallet.trim();
+    }
+    console.log("Includes `merchantWallet` so the facilitator resolves your identity correctly.");
     console.log("Paste into .env (single-quoted so inner \" are fine):");
-    console.log(`X402_ACCEPTS_EXTRA_JSON='${JSON.stringify(exact.extra)}'`);
+    console.log(`X402_ACCEPTS_EXTRA_JSON='${JSON.stringify(extraWithMerchant)}'`);
     console.log();
   }
 

@@ -82,11 +82,18 @@ def main() -> None:
     print("╠════════════════════════════════════════════════════════════════════════╣")
     print(f"║  {vault_pda}")
     print("╚════════════════════════════════════════════════════════════════════════╝")
+    # Inject merchantWallet into extra so the facilitator can always resolve the real
+    # seller identity, even before the vault is activated on-chain (JIT provision path).
+    extra_with_merchant = dict(extra)
+    if "merchantWallet" not in extra_with_merchant:
+        extra_with_merchant["merchantWallet"] = wallet
+
     print()
     print(f"X402_PAY_TO={vault_pda}")
     print()
+    print("Includes `merchantWallet` so the facilitator resolves your identity correctly.")
     print("Paste into .env (single-quoted so inner \" are fine):")
-    print(f"X402_ACCEPTS_EXTRA_JSON='{json.dumps(extra, separators=(',', ':'))}'")
+    print(f"X402_ACCEPTS_EXTRA_JSON='{json.dumps(extra_with_merchant, separators=(',', ':'))}'")
     print()
     print("Next: put X402_PAY_TO + X402_ACCEPTS_EXTRA_JSON in .env, then: x402-seller-start")
 

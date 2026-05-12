@@ -123,8 +123,20 @@ async fn run() -> Result<(), DemoErr> {
     println!("X402_PAY_TO={vault_pda}\n");
 
     if let Some(extra) = exact.get("extra") {
-        let compact = serde_json::to_string(extra).map_err(|x| e(x.to_string()))?;
+        // Inject merchantWallet so the facilitator can always resolve the real seller,
+        // even before the vault is activated on-chain (JIT provision path).
+        let mut extra_with_merchant = extra.clone();
+        if let Some(obj) = extra_with_merchant.as_object_mut() {
+            if !obj.contains_key("merchantWallet") {
+                obj.insert(
+                    "merchantWallet".to_string(),
+                    Value::String(wallet.trim().to_string()),
+                );
+            }
+        }
+        let compact = serde_json::to_string(&extra_with_merchant).map_err(|x| e(x.to_string()))?;
         println!("Exact rail → facilitator `extra` (required for most pr402 verify paths).");
+        println!("Includes `merchantWallet` so the facilitator resolves your identity correctly.");
         println!("Paste into .env (single-quoted so inner `\"` are fine):");
         println!("X402_ACCEPTS_EXTRA_JSON='{compact}'\n");
     }

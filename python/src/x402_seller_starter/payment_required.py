@@ -64,6 +64,21 @@ def accepts_from_env() -> list[dict[str, Any]]:
     extra_raw = os.environ.get("X402_ACCEPTS_EXTRA_JSON", "").strip()
     if extra_raw:
         row["extra"] = json.loads(extra_raw)
+
+    # Inject merchantWallet into extra if MERCHANT_WALLET is set and extra doesn't already have it.
+    # This ensures the facilitator can always resolve the real seller identity from the 402 body,
+    # even when the vault PDA doesn't exist on-chain yet (pre-activation / JIT provision).
+    merchant_wallet = (
+        os.environ.get("MERCHANT_WALLET", "").strip()
+        or os.environ.get("SELLER_WALLET", "").strip()
+    )
+    if merchant_wallet:
+        extra = row.get("extra")
+        if isinstance(extra, dict) and "merchantWallet" not in extra:
+            extra["merchantWallet"] = merchant_wallet
+        elif extra is None:
+            row["extra"] = {"merchantWallet": merchant_wallet}
+
     return [row]
 
 

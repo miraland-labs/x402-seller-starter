@@ -70,6 +70,17 @@ export function acceptsFromEnv(): AcceptsRow[] {
   if (extraRaw) {
     row.extra = JSON.parse(extraRaw) as Record<string, unknown>;
   }
+
+  // Inject merchantWallet into extra if MERCHANT_WALLET is set and extra doesn't already have it.
+  // This ensures the facilitator can always resolve the real seller identity from the 402 body,
+  // even when the vault PDA doesn't exist on-chain yet (pre-activation / JIT provision).
+  const merchantWallet = (process.env["MERCHANT_WALLET"] ?? process.env["SELLER_WALLET"] ?? "").trim();
+  if (merchantWallet && row.extra && !("merchantWallet" in row.extra)) {
+    row.extra["merchantWallet"] = merchantWallet;
+  } else if (merchantWallet && !row.extra) {
+    row.extra = { merchantWallet };
+  }
+
   return [row];
 }
 
