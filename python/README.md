@@ -44,7 +44,7 @@ A valid `PAYMENT-SIGNATURE` is the same JSON body you'd POST to facilitator `/ve
 ## Before serving your first 402
 
 1. Put the output of `x402-seller-find-payto` into `X402_PAY_TO` and `X402_ACCEPTS_EXTRA_JSON`.
-2. **Activate your vault on-chain** at [ipay.sh](https://ipay.sh) (or `POST /api/v1/facilitator/onboard/provision`). Skipping this step still yields valid 402 responses, but settle returns `409 Conflict — vault not yet on-chain`.
+2. **Activate your vault on-chain** at [ipay.sh](https://ipay.sh) (or `POST /api/v1/facilitator/sellers/provision-tx`). Skipping this step still yields valid 402 responses, but settle returns `409 Conflict — vault not yet on-chain`.
 
 ## Notes
 

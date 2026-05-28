@@ -16,7 +16,7 @@ Use this to confirm the starter is **complete** for your own Payment Required se
 4. **Mint / amount** — **`X402_ASSET`** and **`X402_AMOUNT`** match what buyers will pay (USDC decimals, etc.).
 5. **`SELLER_PUBLIC_BASE_URL`** — real origin of **`resource.url`** (tunnel/public host in prod; for local dev behind a public URL, use [ngrok](https://ngrok.com/) or [cloudflared](https://github.com/cloudflare/cloudflared)).
 6a. **`X402_PAY_TO`** — paste the vault PDA printed by **`find_payto`**.
-6b. **Vault on-chain** — the PDA math is deterministic, but the account itself does not exist until you **Activate** the seller (signed on-chain `CreateVault`). Do this on [ipay.sh](https://ipay.sh) or via `POST /api/v1/facilitator/onboard/provision` **before** serving your first 402. Skipping this step still yields valid 402 responses, but buyers will fail at settle time with **`409 Conflict — vault not yet on-chain`**.
+6b. **Vault on-chain** — the PDA math is deterministic, but the account itself does not exist until you **Activate** the seller (signed on-chain `CreateVault`). Do this on [ipay.sh](https://ipay.sh) or via `POST /api/v1/facilitator/sellers/provision-tx` **before** serving your first 402. Skipping this step still yields valid 402 responses, but buyers will fail at settle time with **`409 Conflict — vault not yet on-chain`**.
 7. **Protected route** — example supports **GET and POST** on the paid path; same 402 + `PAYMENT-SIGNATURE` pattern.
 
 ## Buyer agent checklist (who sends `PAYMENT-SIGNATURE`)
@@ -38,7 +38,7 @@ If signing is slow, **rebuild** the unsigned tx so the blockhash stays fresh (se
 | **What must I have to sell with pr402?** | A correct **`payTo`** in your 402 `accepts[]` (vault for **exact**, escrow PDA for **sla-escrow**, …). Without it, buyers cannot pay and verify cannot match. |
 | **Mint allowlist** | If the facilitator sets **`PR402_ALLOWED_PAYMENT_MINTS`**, every **`accepts[].asset`** you publish must be in that list (include **`11111111111111111111111111111111`** for native SOL if applicable). Buyers otherwise fail **`build-*`**, **`/verify`**, and **`/settle`**. |
 | **Machine-readable `payTo` rules** | On the facilitator: **`GET /api/v1/facilitator/capabilities`** → **`agentManifest.payToSemantics`** (typically **`/agent-payTo-semantics.json`**). See upstream [agent-integration.md](https://github.com/miralandlabs/pr402/blob/main/public/agent-integration.md). |
-| **How do I *find* `payTo` for `v2:solana:exact`?** | **`GET /supported`** gives `programId` for your network. **`payTo`** is the **vault PDA** for your merchant pubkey (deterministic seeds). Run **`cargo run --example find_payto`** — it only needs `/supported` + `MERCHANT_WALLET`; it does **not** call **`POST /onboard/provision`** unless you set `SELLER_FETCH_ONBOARD_TX=1` (optional `SELLER_PROVISION_ASSET`, default **`USDC`**). |
+| **How do I *find* `payTo` for `v2:solana:exact`?** | **`GET /supported`** gives `programId` for your network. **`payTo`** is the **vault PDA** for your merchant pubkey (deterministic seeds). Run **`cargo run --example find_payto`** — it only needs `/supported` + `MERCHANT_WALLET`; it does **not** call **`POST /sellers/provision-tx`** unless you set `SELLER_FETCH_ONBOARD_TX=1` (optional `SELLER_PROVISION_ASSET`, default **`USDC`**). |
 | **What is “onboard” then?** | **Provisioning / incentives** (sign a tx so the vault exists on-chain, fee tier, etc.). That is **not** the same as *looking up* `payTo`: the payout address for exact is still that **vault PDA**, whether or not you have signed onboarding yet. |
 | **Do I need `solana-sdk` in my seller app?** | **No.** The **library** is `serde` + `reqwest` + `thiserror`. Only the **`find_payto`** example adds dev-dep **`solana-pubkey`** to derive the PDA. |
 | **Do I set `payTo` in `.env`?** | **Yes** for this demo: copy the **`X402_PAY_TO=...`** line from `find_payto`. |
@@ -67,7 +67,7 @@ cp .env.example .env
 cargo run --example find_payto
 ```
 
-Prints **`X402_PAY_TO=...`**, **`X402_ACCEPTS_EXTRA_JSON='...'`** (from live `/supported`), and the full kind. Optional: **`SELLER_FETCH_ONBOARD_TX=1`** fetches **`POST /api/v1/facilitator/onboard/provision`** (override **`SELLER_PROVISION_ASSET`** if not **`USDC`**) — **not required** for `payTo` / `extra`.
+Prints **`X402_PAY_TO=...`**, **`X402_ACCEPTS_EXTRA_JSON='...'`** (from live `/supported`), and the full kind. Optional: **`SELLER_FETCH_ONBOARD_TX=1`** fetches **`POST /api/v1/facilitator/sellers/provision-tx`** (override **`SELLER_PROVISION_ASSET`** if not **`USDC`**) — **not required** for `payTo` / `extra`.
 
 ### Run the Axum example
 

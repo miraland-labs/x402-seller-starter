@@ -4,7 +4,7 @@
 //! A value for **`accepts[].payTo`** / **`X402_PAY_TO`** that matches what the facilitator verifies.
 //! For the **exact** rail on Solana, that is the **vault PDA** for your merchant key.
 //!
-//! ## How this example finds it (no `/onboard/provision` unless you opt in)
+//! ## How this example finds it (no `POST /sellers/provision-tx` unless you opt in)
 //! 1. **`GET /api/v1/facilitator/supported`** → `programId` (+ `extra`) for `scheme=exact` and your `X402_NETWORK`.
 //! 2. **`MERCHANT_WALLET`** (base58) = your seller pubkey.
 //! 3. **Derive** `find_program_address(["vault", merchant], programId)` — same layout as UniversalSettle docs.
@@ -151,7 +151,7 @@ async fn run() -> Result<(), DemoErr> {
         .unwrap_or(false)
     {
         let asset = std::env::var("SELLER_PROVISION_ASSET").unwrap_or_else(|_| "USDC".to_string());
-        let provision_url = format!("{base}/api/v1/facilitator/onboard/provision");
+        let provision_url = format!("{base}/api/v1/facilitator/sellers/provision-tx");
         println!(
             "(opt-in SELLER_FETCH_ONBOARD_TX) POST {provision_url}  body: {{ \"wallet\", \"asset\": {:?} }}\n",
             asset

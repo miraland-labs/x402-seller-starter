@@ -44,7 +44,7 @@ Each directory is self-contained: clone this repo, step into your language of ch
 Whichever starter you pick:
 
 1. Run the `find_payto` script and paste its two lines into your `.env`.
-2. **Activate your vault on-chain** at [ipay.sh](https://ipay.sh) (or via `POST /api/v1/facilitator/onboard/provision`). Without this, your 402 responses are valid but settle will return `409 Conflict — vault not yet on-chain`.
+2. **Activate your vault on-chain** at [ipay.sh](https://ipay.sh) (or via `POST /api/v1/facilitator/sellers/provision-tx`). Without this, your 402 responses are valid but settle will return `409 Conflict — vault not yet on-chain`.
 
 ## License
 
