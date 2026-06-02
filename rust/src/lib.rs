@@ -12,11 +12,17 @@
 
 mod accepts;
 mod facilitator;
+mod sla_escrow;
+mod srm;
 mod supported;
 mod types;
 
 pub use accepts::{accepts_from_env, AcceptsBuildError};
 pub use facilitator::{FacilitatorClient, FacilitatorError};
+pub use sla_escrow::{
+    sla_escrow_accepts_from_env, sla_escrow_kind_extra_from_supported, SlaEscrowAcceptsError,
+};
+pub use srm::build_srm_json;
 pub use supported::exact_kind_extra_from_supported;
 pub use types::{
     encode_payment_response, extract_payment_header_value, parse_payment_header, PaymentParseError,
@@ -83,7 +89,15 @@ pub fn build_payment_required(
     config: &SellerConfig,
     resource_path: &str,
 ) -> Result<PaymentRequired, AcceptsBuildError> {
-    let accepts = accepts_from_env()?;
+    build_payment_required_with_accepts(config, resource_path, accepts_from_env()?)
+}
+
+/// Build PaymentRequired with explicit accepts (exact or sla-escrow).
+pub fn build_payment_required_with_accepts(
+    config: &SellerConfig,
+    resource_path: &str,
+    accepts: Vec<Value>,
+) -> Result<PaymentRequired, AcceptsBuildError> {
     let mut path = resource_path.to_string();
     if !path.starts_with('/') {
         path.insert(0, '/');
@@ -99,14 +113,20 @@ pub fn build_payment_required(
             mime_type: config.resource_mime_type.clone(),
         },
         accepts,
-        // `extensions` is the x402 v2 spec's escape hatch for non-standard hints. Namespace
-        // our key with a `pr402` prefix so a buyer sees unambiguously which facilitator
-        // implementation this 402 is pointing at. Buyers that don't recognize the key
-        // should ignore it; buyers targeting pr402 can use it to skip a /supported probe.
         extensions: serde_json::json!({
             "pr402FacilitatorUrl": config.facilitator_base_url,
         }),
     })
+}
+
+/// Env-driven accepts: `X402_SCHEME=sla-escrow` selects sla-escrow rail.
+pub fn accepts_for_env() -> Result<Vec<Value>, Box<dyn std::error::Error + Send + Sync>> {
+    let scheme = std::env::var("X402_SCHEME").unwrap_or_else(|_| "exact".into());
+    if scheme == "sla-escrow" {
+        Ok(sla_escrow_accepts_from_env()?)
+    } else {
+        Ok(accepts_from_env()?)
+    }
 }
 
 /// Serialize [`PaymentRequired`] for an HTTP 402 JSON body.

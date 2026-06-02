@@ -9,7 +9,9 @@ x402-seller-starter/
 └── python/        FastAPI      · ~350 LOC  · Python ≥ 3.11, httpx + solders
 ```
 
-All three ship the same feature set, use the same env var names, produce the same 402 body shape on the wire, and target the **`exact`** (UniversalSettle) rail.
+All three ship the same feature set, use the same env var names, produce the same 402 body shape on the wire, and target the **`exact`** (UniversalSettle) rail by default.
+
+**`sla-escrow` (wire-only):** set `X402_SCHEME=sla-escrow`, run `find_escrow_payto`, fund via verify/settle — no delivery/registry path. Full delivery reference: [x402-buy-spl-token](https://github.com/miralandlabs/x402-buy-spl-token). Each starter serves `/.well-known/x402-resources.json` for discovery harvest.
 
 ## Who this is for
 
@@ -33,7 +35,7 @@ Each directory is self-contained: clone this repo, step into your language of ch
 
 ## What the starters share
 
-- **Scope.** All three are limited to `v2:solana:exact`. For `sla-escrow`, see the [pr402 SLA docs](https://ipay.sh/onboarding_guide.md).
+- **Scope.** Default **`exact`**. Optional **`sla-escrow`** wire-only mode (`X402_SCHEME=sla-escrow`, `find_escrow_payto`, `ORACLE_*` env). For full escrow delivery, see [x402-buy-spl-token](https://github.com/miralandlabs/x402-buy-spl-token).
 - **Env var names.** `SELLER_PUBLIC_BASE_URL`, `FACILITATOR_BASE_URL`, `MERCHANT_WALLET`, `X402_SCHEME`, `X402_NETWORK`, `X402_ASSET`, `X402_AMOUNT`, `X402_PAY_TO`, `X402_MAX_TIMEOUT_SECONDS`, `X402_ACCEPTS_EXTRA_JSON` — identical across languages.
 - **`find_payto` companion.** Each starter includes a small script that computes your vault PDA (`payTo`) from `/supported` + `MERCHANT_WALLET`, then prints a ready-to-paste `X402_ACCEPTS_EXTRA_JSON=...` line.
 - **Header contract.** Buyer sends `PAYMENT-SIGNATURE` (raw JSON or base64-of-JSON); server replies with a `PAYMENT-RESPONSE` header (base64 of the settle result) on both success and failure paths.

@@ -32,7 +32,7 @@ use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use x402_seller_starter::{
-    accepts_from_env, build_payment_required, encode_payment_response,
+    accepts_for_env, build_payment_required_with_accepts, build_srm_json, encode_payment_response,
     extract_payment_header_value, parse_payment_header, payment_required_json, FacilitatorClient,
     SellerConfig,
 };
@@ -73,7 +73,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let paid_path = config.paid_path();
     let free_path = config.free_path();
     // Same check as `build_payment_required`; fail at startup so `/api/premium` is never a plain-text 500.
-    accepts_from_env()?;
+    accepts_for_env().map_err(|e| e.to_string())?;
     let facilitator = FacilitatorClient::new(&config.facilitator_base_url)?;
 
     let state = Arc::new(AppState {
@@ -85,6 +85,7 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
 
     let app = Router::new()
         .route("/", get(root))
+        .route("/.well-known/x402-resources.json", get(srm_json))
         .route(&free_path, get(free_ok))
         .route(&paid_path, get(paid_gate).post(paid_gate))
         .layer(
@@ -117,12 +118,21 @@ async fn free_ok() -> impl IntoResponse {
     Json(json!({ "tier": "free", "message": "no payment required" }))
 }
 
+async fn srm_json(State(s): State<Arc<AppState>>) -> impl IntoResponse {
+    let scheme = std::env::var("X402_SCHEME").unwrap_or_else(|_| "exact".into());
+    Json(build_srm_json(&s.config, &s.paid_path, &scheme))
+}
+
 async fn paid_gate(
     State(s): State<Arc<AppState>>,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
-    let pr = build_payment_required(&s.config, &s.paid_path)
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let pr = build_payment_required_with_accepts(
+        &s.config,
+        &s.paid_path,
+        accepts_for_env().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+    )
+    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // x402 v2: PAYMENT-SIGNATURE only
     let raw_payment = extract_payment_header_value(|name| {
