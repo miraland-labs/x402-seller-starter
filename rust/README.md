@@ -16,7 +16,7 @@ Requires Rust toolchain installed.
    - `SELLER_PUBLIC_BASE_URL` (your server's public URL, e.g. `http://127.0.0.1:3000`)
    - `X402_AMOUNT` (USDC price per request, in decimals)
 
-2. **Onboard**: Follow the [x402-cli README](../../tools/x402-cli/README.md) to activate your vault on-chain and register your merchant wallet off-chain.
+2. **Onboard**: Follow the [x402-cli README](https://github.com/miraland-labs/x402/blob/main/tools/x402-cli/README.md) to activate your vault on-chain and register your merchant wallet off-chain.
 
 3. **Run**:
    ```bash
