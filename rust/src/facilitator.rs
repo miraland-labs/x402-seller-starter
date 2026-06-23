@@ -2,7 +2,10 @@
 
 use reqwest::Url;
 use serde_json::{json, Value};
+#[cfg(feature = "sdk")]
+use std::sync::Arc;
 use thiserror::Error;
+
 
 #[derive(Debug, Error)]
 pub enum FacilitatorError {
@@ -131,6 +134,189 @@ impl FacilitatorClient {
         })
     }
 }
+
+#[cfg(feature = "sdk")]
+use std::time::Duration;
+#[cfg(feature = "sdk")]
+use tokio::sync::RwLock;
+#[cfg(feature = "sdk")]
+use crate::types::PaymentRequired;
+
+#[cfg(feature = "sdk")]
+#[derive(Clone)]
+pub struct X402SellerSDK {
+    inner: Arc<X402SellerSDKInner>,
+}
+
+#[cfg(feature = "sdk")]
+struct X402SellerSDKInner {
+    facilitator_url: String,
+    seller_wallet: String,
+    public_base_url: String,
+    amount: String,
+    scheme: String,
+    asset: Option<String>,
+    network: Option<String>,
+    max_timeout_seconds: u64,
+    cached_body: RwLock<Option<PaymentRequired>>,
+    facilitator_client: FacilitatorClient,
+    http_client: reqwest::Client,
+}
+
+#[cfg(feature = "sdk")]
+impl X402SellerSDK {
+    pub fn new(
+        facilitator_url: &str,
+        seller_wallet: &str,
+        public_base_url: &str,
+        amount: &str,
+        scheme: Option<&str>,
+        asset: Option<&str>,
+        network: Option<&str>,
+        max_timeout_seconds: Option<u64>,
+    ) -> Result<Self, FacilitatorError> {
+        let facilitator_client = FacilitatorClient::new(facilitator_url)?;
+        let http_client = reqwest::Client::new();
+        Ok(Self {
+            inner: Arc::new(X402SellerSDKInner {
+                facilitator_url: facilitator_url.trim_end_matches('/').to_string(),
+                seller_wallet: seller_wallet.to_string(),
+                public_base_url: public_base_url.trim_end_matches('/').to_string(),
+                amount: amount.to_string(),
+                scheme: scheme.unwrap_or("exact").to_string(),
+                asset: asset.map(String::from),
+                network: network.map(String::from),
+                max_timeout_seconds: max_timeout_seconds.unwrap_or(300),
+                cached_body: RwLock::new(None),
+                facilitator_client,
+                http_client,
+            }),
+        })
+    }
+
+    pub async fn start(&self) -> Result<(), FacilitatorError> {
+        // Initial fetch
+        self.refresh_cache().await?;
+
+        // Background task to refresh the cache every 10 minutes
+        let this = self.clone();
+        tokio::spawn(async move {
+            loop {
+                tokio::time::sleep(Duration::from_secs(600)).await;
+                if let Err(e) = this.refresh_cache().await {
+                    eprintln!("[X402SellerSDK] Background cache refresh failed: {:?}", e);
+                }
+            }
+        });
+
+        Ok(())
+    }
+
+    async fn refresh_cache(&self) -> Result<(), FacilitatorError> {
+        let client = &self.inner.http_client;
+        let mut resolved_network = self.inner.network.clone();
+        let mut resolved_asset = self.inner.asset.clone();
+
+        // 1. Resolve network and asset via capabilities if missing
+        if resolved_network.is_none() || resolved_asset.is_none() {
+            let caps_url = format!("{}/api/v1/facilitator/capabilities", self.inner.facilitator_url);
+            let caps_res = client
+                .get(&caps_url)
+                .header("Accept", "application/json")
+                .send()
+                .await?;
+            if !caps_res.status().is_success() {
+                return Err(FacilitatorError::Http {
+                    status: caps_res.status().as_u16(),
+                    body: caps_res.text().await.unwrap_or_default(),
+                    step: "capabilities",
+                });
+            }
+            let caps: Value = caps_res.json().await?;
+            if resolved_network.is_none() {
+                resolved_network = caps.get("solanaNetwork")
+                    .or_else(|| caps.get("network"))
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+            }
+            if resolved_asset.is_none() {
+                resolved_asset = caps.get("usdcMint")
+                    .and_then(|v| v.as_str())
+                    .map(String::from);
+            }
+        }
+
+        let network = resolved_network.unwrap_or_else(|| "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp".to_string());
+        let asset = resolved_asset.unwrap_or_else(|| "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU".to_string());
+
+        // 2. Build draft PaymentRequired
+        let draft = json!({
+            "x402Version": 2,
+            "resource": { "url": format!("{}/api/placeholder", self.inner.public_base_url) },
+            "accepts": [
+                {
+                    "scheme": self.inner.scheme,
+                    "network": network,
+                    "payTo": self.inner.seller_wallet,
+                    "asset": asset,
+                    "amount": self.inner.amount,
+                    "maxTimeoutSeconds": self.inner.max_timeout_seconds,
+                }
+            ]
+        });
+
+        // 3. Post to /enrich
+        let enrich_url = format!("{}/api/v1/facilitator/payment-required/enrich", self.inner.facilitator_url);
+        let enrich_res = client
+            .post(&enrich_url)
+            .header("Content-Type", "application/json")
+            .header("Accept", "application/json")
+            .json(&draft)
+            .send()
+            .await?;
+        
+        let status = enrich_res.status();
+        let enrich_text = enrich_res.text().await.unwrap_or_default();
+        if !status.is_success() {
+            return Err(FacilitatorError::Http {
+                status: status.as_u16(),
+                body: enrich_text,
+                step: "enrich",
+            });
+        }
+
+        let enriched: PaymentRequired = serde_json::from_str(&enrich_text).map_err(|e| {
+            FacilitatorError::InvalidSettleJson(format!("enrich response not JSON: {e}"))
+        })?;
+
+        // 4. Update cache
+        let mut lock = self.inner.cached_body.write().await;
+        *lock = Some(enriched);
+
+        Ok(())
+    }
+
+    pub async fn get_payment_required(&self, resource_path: &str) -> Result<PaymentRequired, FacilitatorError> {
+        let lock = self.inner.cached_body.read().await;
+        let cached = lock.as_ref().ok_or_else(|| {
+            FacilitatorError::Url("SDK not initialized; cached PaymentRequired is None".to_string())
+        })?;
+
+        let mut path = resource_path.to_string();
+        if !path.starts_with('/') {
+            path.insert(0, '/');
+        }
+
+        let mut pr = cached.clone();
+        pr.resource.url = format!("{}{}", self.inner.public_base_url, path);
+        Ok(pr)
+    }
+
+    pub async fn verify_and_settle(&self, body: &Value) -> Result<Value, FacilitatorError> {
+        self.inner.facilitator_client.verify_and_settle(body).await
+    }
+}
+
 
 fn verify_json_indicates_valid(v: &Value) -> bool {
     v.get("isValid").and_then(|x| x.as_bool()) == Some(true)

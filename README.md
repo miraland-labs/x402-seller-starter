@@ -1,52 +1,52 @@
 # x402-seller-starter
 
-Reference seller starters for [pr402](https://github.com/miralandlabs/pr402) / [x402 v2](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md), in three languages. Each starter gates one HTTP route with `402 Payment Required` and settles via a pr402 facilitator — nothing more.
+Reference seller starters for [pr402](https://github.com/miralandlabs/pr402) / [x402 v2](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md), in three languages. Each starter gates one HTTP route with `402 Payment Required` and settles via a pr402 facilitator.
 
 ```
 x402-seller-starter/
-├── rust/          Axum         · ~300 LOC  · library + find_payto example
+├── rust/          Axum         · ~300 LOC  · library + axum example
 ├── typescript/    Express 5    · ~300 LOC  · Node ≥ 20, native fetch
-└── python/        FastAPI      · ~350 LOC  · Python ≥ 3.11, httpx + solders
+└── python/        FastAPI      · ~350 LOC  · Python ≥ 3.11, httpx
 ```
 
-All three ship the same feature set, use the same env var names, produce the same 402 body shape on the wire, and target the **`exact`** (UniversalSettle) rail by default.
+## Modern Seller Integration Flow
 
-**`sla-escrow` (wire-only):** set `X402_SCHEME=sla-escrow`, run `find_escrow_payto`, fund via verify/settle — no delivery/registry path. Full delivery reference: [x402-buy-spl-token](https://github.com/miralandlabs/x402-buy-spl-token). Each starter serves `/.well-known/x402-resources.json` for discovery harvest.
+To make integration easier, the x402 ecosystem uses a two-part integration strategy:
+1. **Onboarding & Discovery (CLI)**: Use the [x402-cli](file:///Users/miracle17/miraland-labs/x402/tools/x402-cli) tool to check your status, activate your payment vault on-chain, register in the directory, and list your API resources.
+2. **Runtime Gate (SDK)**: Use the unified `X402SellerSDK` inside your web application to dynamically fetch capabilities, cache enriched 402 templates in memory, and verify+settle payment proofs.
 
-## Who this is for
+This eliminates local PDA derivation and blockchain SDK dependencies inside your web application!
 
-- You are **already writing a paid API** in Rust, TypeScript, or Python and want a concrete reference to copy the 402 middleware pattern from.
-- You want to understand **exactly what an x402 v2 seller does on the wire**, free of framework opinions.
-
-## Who this is *not* for
-
-- You want to spin up a paid API from scratch in a different language (Go, Java, Elixir, …). The README for each starter is dense enough that porting the ideas takes under an hour — the `accepts_from_env` helper and the two-POST `verify_and_settle` loop is the whole contract.
-- You are a seller looking for a hosted onboarding UI — go to [ipay.sh](https://ipay.sh) instead. It walks through Preview → Activate → Verify in about 90 seconds, no code required.
+---
 
 ## Pick a starter
 
 | You write… | Start here | Runtime |
 |---|---|---|
 | Rust | [`rust/`](rust/README.md) | `cargo run --example axum_server` |
-| TypeScript / JavaScript | [`typescript/`](typescript/README.md) | `npm start` (needs Node ≥ 20) |
-| Python | [`python/`](python/README.md) | `x402-seller-start` (needs Python ≥ 3.11) |
+| TypeScript / JavaScript | [`typescript/`](typescript/README.md) | `npm start` |
+| Python | [`python/`](python/README.md) | `x402-seller-start` |
 
-Each directory is self-contained: clone this repo, step into your language of choice, and follow the subdir README. There is no root-level build.
+Each directory is self-contained: clone this repo, step into your language of choice, and follow the subdir README.
+
+---
 
 ## What the starters share
 
-- **Scope.** Default **`exact`**. Optional **`sla-escrow`** wire-only mode (`X402_SCHEME=sla-escrow`, `find_escrow_payto`, `ORACLE_*` env). For full escrow delivery, see [x402-buy-spl-token](https://github.com/miralandlabs/x402-buy-spl-token).
-- **Env var names.** `SELLER_PUBLIC_BASE_URL`, `FACILITATOR_BASE_URL`, `MERCHANT_WALLET`, `X402_SCHEME`, `X402_NETWORK`, `X402_ASSET`, `X402_AMOUNT`, `X402_PAY_TO`, `X402_MAX_TIMEOUT_SECONDS`, `X402_ACCEPTS_EXTRA_JSON` — identical across languages.
-- **`find_payto` companion.** Each starter includes a small script that computes your vault PDA (`payTo`) from `/supported` + `MERCHANT_WALLET`, then prints a ready-to-paste `X402_ACCEPTS_EXTRA_JSON=...` line.
-- **Header contract.** Buyer sends `PAYMENT-SIGNATURE` (raw JSON or base64-of-JSON); server replies with a `PAYMENT-RESPONSE` header (base64 of the settle result) on both success and failure paths.
-- **The 402 body.** Every starter emits the same `extensions.pr402FacilitatorUrl` hint so buyers can skip a `/supported` probe when they recognize the key.
+- **X402SellerSDK.** All starters implement a parallel `X402SellerSDK` class/struct. It resolves the facilitator's `/capabilities` at boot time, fetches the fully enriched PaymentRequired challenge template via the `/payment-required/enrich` endpoint, and caches it in memory (polling on a 10-minute interval).
+- **Zero Heavy Blockchain Dependencies.** The HTTP API servers themselves do not require heavy Solana dependencies (like `@solana/web3.js` or `solders`). All PDA mapping and validation is performed dynamically via the facilitator.
+- **Header contract.** The buyer sends the `PAYMENT-SIGNATURE` header; the server replies with a `PAYMENT-RESPONSE` header (base64 of the settle result) on both success and failure paths.
 
-## Before serving your first 402
+---
 
-Whichever starter you pick:
+## Onboarding Checklist
 
-1. Run the `find_payto` script and paste its two lines into your `.env`.
-2. **Activate your vault on-chain** at [ipay.sh](https://ipay.sh) (or via `POST /api/v1/facilitator/sellers/provision-tx`). Without this, your 402 responses are valid but settle will return `409 Conflict — vault not yet on-chain`.
+Before serving your first 402 response, make sure you complete these steps with the CLI:
+
+1. **Check Status**: Run `node tools/x402-cli/dist/index.js status --keypair <your_keypair.json>` to see your current setup.
+2. **Activate Vault**: Run `node tools/x402-cli/dist/index.js activate --wallet <address>` to retrieve the transaction needed to initialize your SplitVault on-chain.
+3. **Register Merchant**: Run `node tools/x402-cli/dist/index.js register --keypair <your_keypair.json> --url <api_url> --display-name "My API Store"` to register off-chain.
+4. **Enroll APIs**: Write an `x402-resources.json` manifest and register it using `node tools/x402-cli/dist/index.js enroll --manifest <manifest.json> --keypair <your_keypair.json>`.
 
 ## License
 

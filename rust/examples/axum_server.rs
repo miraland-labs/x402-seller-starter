@@ -28,21 +28,22 @@ use axum::{Json, Router};
 use serde_json::json;
 use std::sync::Arc;
 use tower_http::cors::{Any, CorsLayer};
+
 use tower_http::trace::TraceLayer;
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 
 use x402_seller_starter::{
-    accepts_for_env, build_payment_required_with_accepts, build_srm_json, encode_payment_response,
-    extract_payment_header_value, parse_payment_header, payment_required_json, FacilitatorClient,
-    SellerConfig,
+    build_srm_json, encode_payment_response, extract_payment_header_value,
+    parse_payment_header, payment_required_json, X402SellerSDK,
 };
+
 
 #[derive(Clone)]
 struct AppState {
-    config: SellerConfig,
     paid_path: String,
     free_path: String,
-    facilitator: FacilitatorClient,
+    sdk: X402SellerSDK,
+    public_base_url: String,
 }
 
 #[tokio::main]
@@ -69,18 +70,42 @@ async fn run() -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
-    let config = SellerConfig::from_env()?;
-    let paid_path = config.paid_path();
-    let free_path = config.free_path();
-    // Same check as `build_payment_required`; fail at startup so `/api/premium` is never a plain-text 500.
-    accepts_for_env().map_err(|e| e.to_string())?;
-    let facilitator = FacilitatorClient::new(&config.facilitator_base_url)?;
+    let paid_path = std::env::var("SELLER_PAID_PATH").unwrap_or_else(|_| "/api/premium".into());
+    let free_path = std::env::var("SELLER_FREE_PATH").unwrap_or_else(|_| "/api/free".into());
+
+    let facilitator_url = std::env::var("FACILITATOR_BASE_URL")
+        .unwrap_or_else(|_| "https://preview.ipay.sh".to_string());
+    let seller_wallet = std::env::var("MERCHANT_WALLET")
+        .or_else(|_| std::env::var("SELLER_WALLET"))
+        .unwrap_or_else(|_| "your_wallet_address".to_string());
+    let public_base_url = std::env::var("SELLER_PUBLIC_BASE_URL")
+        .unwrap_or_else(|_| "http://127.0.0.1:3000".to_string());
+    let amount = std::env::var("X402_AMOUNT").unwrap_or_else(|_| "50000".to_string());
+    let scheme = std::env::var("X402_SCHEME").ok();
+    let asset = std::env::var("X402_ASSET").ok();
+    let network = std::env::var("X402_NETWORK").ok();
+    let max_timeout_seconds = std::env::var("X402_MAX_TIMEOUT_SECONDS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok());
+
+    let sdk = X402SellerSDK::new(
+        &facilitator_url,
+        &seller_wallet,
+        &public_base_url,
+        &amount,
+        scheme.as_deref(),
+        asset.as_deref(),
+        network.as_deref(),
+        max_timeout_seconds,
+    )?;
+
+    sdk.start().await?;
 
     let state = Arc::new(AppState {
-        config,
         paid_path: paid_path.clone(),
         free_path: free_path.clone(),
-        facilitator,
+        sdk,
+        public_base_url,
     });
 
     let app = Router::new()
@@ -109,7 +134,7 @@ async fn root(State(s): State<Arc<AppState>>) -> impl IntoResponse {
         "service": "x402-seller-starter",
         "free": s.free_path,
         "paid": s.paid_path,
-        "facilitator": s.config.facilitator_base_url,
+        "facilitator": s.sdk.get_payment_required(&s.paid_path).await.ok().and_then(|pr| pr.extensions.get("pr402FacilitatorUrl").and_then(|v| v.as_str().map(String::from))),
         "docs": "https://github.com/miraland-labs/x402",
     }))
 }
@@ -120,19 +145,24 @@ async fn free_ok() -> impl IntoResponse {
 
 async fn srm_json(State(s): State<Arc<AppState>>) -> impl IntoResponse {
     let scheme = std::env::var("X402_SCHEME").unwrap_or_else(|_| "exact".into());
-    Json(build_srm_json(&s.config, &s.paid_path, &scheme))
+    // Create temporary seller config mock for srm backward compatibility
+    let mock_config = x402_seller_starter::SellerConfig {
+        public_base_url: s.public_base_url.clone(),
+        facilitator_base_url: "".to_string(),
+        resource_description: "Paid API".to_string(),
+        resource_mime_type: "application/json".to_string(),
+    };
+    Json(build_srm_json(&mock_config, &s.paid_path, &scheme))
 }
 
 async fn paid_gate(
     State(s): State<Arc<AppState>>,
+    axum::extract::OriginalUri(uri): axum::extract::OriginalUri,
     headers: HeaderMap,
 ) -> Result<Response, (StatusCode, String)> {
-    let pr = build_payment_required_with_accepts(
-        &s.config,
-        &s.paid_path,
-        accepts_for_env().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
-    )
-    .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or(&s.paid_path);
+    let pr = s.sdk.get_payment_required(path_and_query).await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
     // x402 v2: PAYMENT-SIGNATURE only
     let raw_payment = extract_payment_header_value(|name| {
@@ -144,7 +174,7 @@ async fn paid_gate(
 
     let Some(raw) = raw_payment else {
         let body =
-            payment_required_json(&pr.with_error("PAYMENT-SIGNATURE header is required (x402 v2)"))
+            payment_required_json(&pr.clone().with_error("PAYMENT-SIGNATURE header is required (x402 v2)"))
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
         return Ok((StatusCode::PAYMENT_REQUIRED, Json(body)).into_response());
     };
@@ -153,13 +183,13 @@ async fn paid_gate(
         Ok(v) => v,
         Err(e) => {
             let body =
-                payment_required_json(&pr.with_error(format!("Invalid payment header: {e}")))
+                payment_required_json(&pr.clone().with_error(format!("Invalid payment header: {e}")))
                     .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             return Ok((StatusCode::PAYMENT_REQUIRED, Json(body)).into_response());
         }
     };
 
-    match s.facilitator.verify_and_settle(&proof).await {
+    match s.sdk.verify_and_settle(&proof).await {
         Ok(settled) => {
             let message = if settled
                 .get("settlementNote")
@@ -184,7 +214,7 @@ async fn paid_gate(
         }
         Err(e) => {
             let error_result = json!({"success": false, "errorReason": e.to_string()});
-            let body = payment_required_json(&pr.with_error(format!("Facilitator: {e}")))
+            let body = payment_required_json(&pr.clone().with_error(format!("Facilitator: {e}")))
                 .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
             let mut res = (StatusCode::PAYMENT_REQUIRED, Json(body)).into_response();
             // x402 v2: emit PAYMENT-RESPONSE on failure too

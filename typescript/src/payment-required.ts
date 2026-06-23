@@ -113,3 +113,173 @@ export function parsePaymentHeader(raw: string): Record<string, unknown> {
 export function encodePaymentResponse(settleResult: unknown): string {
   return Buffer.from(JSON.stringify(settleResult), "utf8").toString("base64");
 }
+
+import { FacilitatorClient } from "./facilitator.js";
+import type { Request, Response, NextFunction } from "express";
+
+export class X402SellerSDK {
+  private facilitatorUrl: string;
+  private sellerWallet: string;
+  private publicBaseUrl: string;
+  private amount: string;
+  private scheme: string;
+  private asset?: string;
+  private network?: string;
+  private maxTimeoutSeconds: number;
+
+  private cachedBody: PaymentRequired | null = null;
+  private cacheTtlMs = 10 * 60 * 1000; // 10 minutes
+  private lastFetchTime = 0;
+  private facilitatorClient: FacilitatorClient;
+  private refreshInterval: NodeJS.Timeout | null = null;
+
+  constructor(options: {
+    facilitatorUrl: string;
+    sellerWallet: string;
+    publicBaseUrl: string;
+    amount: string;
+    scheme?: string;
+    asset?: string;
+    network?: string;
+    maxTimeoutSeconds?: number;
+  }) {
+    this.facilitatorUrl = options.facilitatorUrl.replace(/\/+$/, "");
+    this.sellerWallet = options.sellerWallet;
+    this.publicBaseUrl = options.publicBaseUrl.replace(/\/+$/, "");
+    this.amount = options.amount;
+    this.scheme = options.scheme || "exact";
+    this.asset = options.asset;
+    this.network = options.network;
+    this.maxTimeoutSeconds = options.maxTimeoutSeconds ?? 300;
+    this.facilitatorClient = new FacilitatorClient(this.facilitatorUrl);
+  }
+
+  async start() {
+    await this.refreshCache();
+    // Refresh background cache every 10 minutes
+    this.refreshInterval = setInterval(() => {
+      this.refreshCache().catch((err) => {
+        console.error("[X402SellerSDK] Background cache refresh failed:", err);
+      });
+    }, this.cacheTtlMs);
+  }
+
+  stop() {
+    if (this.refreshInterval) {
+      clearInterval(this.refreshInterval);
+      this.refreshInterval = null;
+    }
+  }
+
+  private async refreshCache() {
+    try {
+      let resolvedNetwork = this.network;
+      let resolvedAsset = this.asset;
+
+      // If network or asset is missing, fetch capabilities
+      if (!resolvedNetwork || !resolvedAsset) {
+        const capsRes = await fetch(`${this.facilitatorUrl}/api/v1/facilitator/capabilities`, {
+          headers: { Accept: "application/json" },
+        });
+        if (!capsRes.ok) {
+          throw new Error(`Failed to fetch capabilities: ${capsRes.status}`);
+        }
+        const caps = (await capsRes.json()) as any;
+        if (!resolvedNetwork) {
+          resolvedNetwork =
+            caps.solanaNetwork || caps.network || "solana:5eykt4UsFv8P8NJdTREpY1vzqKqZKvdp";
+        }
+        if (!resolvedAsset) {
+          resolvedAsset = caps.usdcMint || "4zMMC9srt5Ri5X14GAgXhaHii3GnPAEERYPJgZJDncDU";
+        }
+      }
+
+      // Build draft payload (using standard structure for /payment-required/enrich)
+      const draft = {
+        x402Version: 2,
+        resource: { url: `${this.publicBaseUrl}/api/placeholder` },
+        accepts: [
+          {
+            scheme: this.scheme,
+            network: resolvedNetwork,
+            payTo: this.sellerWallet,
+            asset: resolvedAsset,
+            amount: this.amount,
+            maxTimeoutSeconds: this.maxTimeoutSeconds,
+          },
+        ],
+      };
+
+      const enrichRes = await fetch(`${this.facilitatorUrl}/api/v1/facilitator/payment-required/enrich`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        body: JSON.stringify(draft),
+      });
+      if (!enrichRes.ok) {
+        throw new Error(`Enrich API failed: ${enrichRes.status} ${await enrichRes.text()}`);
+      }
+
+      this.cachedBody = (await enrichRes.json()) as PaymentRequired;
+      this.lastFetchTime = Date.now();
+    } catch (e: any) {
+      console.error("[X402SellerSDK] Failed to enrich payment required template:", e);
+      if (!this.cachedBody) {
+        throw e; // fail startup if we have no cache yet
+      }
+    }
+  }
+
+  getPaymentRequired(resourcePath: string): PaymentRequired {
+    if (!this.cachedBody) {
+      throw new Error("X402SellerSDK is not initialized. Call start() first.");
+    }
+    const path = resourcePath.startsWith("/") ? resourcePath : `/${resourcePath}`;
+    return {
+      ...this.cachedBody,
+      resource: {
+        ...this.cachedBody.resource,
+        url: `${this.publicBaseUrl}${path}`,
+      },
+    };
+  }
+
+  async verifyAndSettle(proof: unknown): Promise<Record<string, unknown>> {
+    return this.facilitatorClient.verifyAndSettle(proof);
+  }
+}
+
+export function x402Middleware(sdk: X402SellerSDK) {
+  return async (req: Request, res: Response, next: NextFunction) => {
+    const raw = req.headers["payment-signature"];
+    const rawStr = Array.isArray(raw) ? raw[0] : raw;
+    const pr = sdk.getPaymentRequired(req.originalUrl);
+
+    if (!rawStr) {
+      res.status(402).json({ ...pr, error: "PAYMENT-SIGNATURE header is required (x402 v2)" });
+      return;
+    }
+
+    let proof: Record<string, unknown>;
+    try {
+      proof = parsePaymentHeader(rawStr);
+    } catch (e) {
+      res.status(402).json({ ...pr, error: `Invalid payment header: ${String(e)}` });
+      return;
+    }
+
+    try {
+      const settled = await sdk.verifyAndSettle(proof);
+      const message =
+        typeof settled["settlementNote"] === "string"
+          ? "payment verified; settlement already on-chain (idempotent)"
+          : "payment verified and settled";
+      res.setHeader("PAYMENT-RESPONSE", encodePaymentResponse(settled));
+      (req as any).payment = settled;
+      next();
+    } catch (e: any) {
+      const errorResult = { success: false, errorReason: e.message };
+      res.setHeader("PAYMENT-RESPONSE", encodePaymentResponse(errorResult));
+      res.status(402).json({ ...pr, error: `Facilitator: ${e.message}` });
+    }
+  };
+}

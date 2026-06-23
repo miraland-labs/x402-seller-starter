@@ -1,50 +1,72 @@
 # x402-seller-starter · TypeScript
 
-Reference TypeScript seller for [pr402](https://github.com/miralandlabs/pr402) / [x402 v2](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md). About 200 lines total: an Express server that gates one route with HTTP 402 and settles via a pr402 facilitator.
+Reference TypeScript seller for [pr402](https://github.com/miralandlabs/pr402) / [x402 v2](https://github.com/coinbase/x402/blob/main/specs/x402-specification-v2.md). It implements the `X402SellerSDK` class and an Express middleware that intercepts requests, gates them with HTTP 402, and settles payments via a pr402 facilitator.
 
 ## Scope
 
-Targets the **`exact`** (UniversalSettle) rail — instant micro-payments. For `sla-escrow`, see the [pr402 SLA docs](https://ipay.sh/onboarding_guide.md).
+Targets the **`exact`** (UniversalSettle) rail — instant micro-payments.
 
 ## Quick start
 
-Requires Node.js ≥ 20 (uses the built-in `fetch`, ESM, and top-level `await` where convenient).
+Requires Node.js ≥ 20.
 
-```bash
-cp .env.example .env         # fill in MERCHANT_WALLET
-npm install
-npm run find-payto           # computes X402_PAY_TO + prints X402_ACCEPTS_EXTRA_JSON
-# paste both lines back into .env
-npm start                    # starts Express on BIND_ADDR (default 127.0.0.1:3000)
+1. **Configure environment**: Copy `.env.example` to `.env` and fill in:
+   - `FACILITATOR_BASE_URL` (e.g. `https://preview.ipay.sh`)
+   - `MERCHANT_WALLET` (your public wallet address)
+   - `SELLER_PUBLIC_BASE_URL` (your server's public URL, e.g. `http://127.0.0.1:3000`)
+   - `X402_AMOUNT` (USDC price per request, in decimals)
+
+2. **Onboard**: Follow the [x402-cli README](../../tools/x402-cli/README.md) to activate your vault on-chain and register your merchant wallet off-chain.
+
+3. **Install & Run**:
+   ```bash
+   npm install
+   npm start
+   ```
+
+4. **Verify**:
+   ```bash
+   curl -sS http://127.0.0.1:3000/api/free
+   curl -i  http://127.0.0.1:3000/api/premium                # Returns HTTP 402 with enriched challenge JSON
+   ```
+
+---
+
+## Code Usage
+
+You can easily drop this into your existing Express application:
+
+```typescript
+import express from "express";
+import { X402SellerSDK, x402Middleware } from "./payment-required.js";
+
+const sdk = new X402SellerSDK({
+  facilitatorUrl: process.env.FACILITATOR_BASE_URL!,
+  sellerWallet: process.env.MERCHANT_WALLET!,
+  publicBaseUrl: process.env.SELLER_PUBLIC_BASE_URL!,
+  amount: "50000", // USDC in microunits (e.g. 0.05 USDC)
+});
+
+// Boot capability lookup, cached enrichment template, and auto-refresher
+await sdk.start();
+
+const app = express();
+
+// Apply the x402Middleware to any route you want to charge for
+app.get("/api/premium", x402Middleware(sdk), (req, res) => {
+  res.json({
+    message: "Thank you for your payment! Here is your premium resource.",
+    settlement: (req as any).payment,
+  });
+});
 ```
 
-Then:
+---
 
-```bash
-curl -sS  http://127.0.0.1:3000/api/free
-curl -i   http://127.0.0.1:3000/api/premium                 # HTTP 402
-curl -sS  http://127.0.0.1:3000/api/premium \
-  -H "PAYMENT-SIGNATURE: $(cat proof.json)"                  # HTTP 200 on valid proof
-```
+## File Layout
 
-A valid `PAYMENT-SIGNATURE` is the same JSON body you'd POST to facilitator `/verify` — build it via your buyer agent / the pr402 `build-exact-payment-tx` endpoint.
-
-## Layout
-
-| Path                          | Purpose                                                           |
-| ----------------------------- | ----------------------------------------------------------------- |
-| `src/server.ts`               | Express app: free route + paid route (GET/POST).                  |
-| `src/payment-required.ts`     | Build the x402 v2 Payment Required body from env vars.            |
-| `src/facilitator.ts`          | `FacilitatorClient.verifyAndSettle` — two POSTs + error mapping.  |
-| `src/find-payto.ts`           | Compute `payTo` (vault PDA) + dump `X402_ACCEPTS_EXTRA_JSON`.     |
-
-## Before serving your first 402
-
-1. Put the output of `npm run find-payto` into `X402_PAY_TO` and `X402_ACCEPTS_EXTRA_JSON`.
-2. **Activate your vault on-chain** at [ipay.sh](https://ipay.sh) (or `POST /api/v1/facilitator/sellers/provision-tx`). Skipping this step still yields valid 402 responses, but settle returns `409 Conflict — vault not yet on-chain`.
-
-## Notes
-
-- Header names are normalized to lowercase before lookup. `parsePaymentHeader` accepts raw JSON and base64-of-JSON.
-- `verifyAndSettle` surfaces `isValid: false` (HTTP-200 semantic failure) as a `FacilitatorError`, so you can forward `invalidReason` to buyers.
-- The 402 JSON body carries `extensions.pr402FacilitatorUrl` as a discoverability hint; buyers that don't recognize the key should ignore it.
+| Path | Purpose |
+| --- | --- |
+| `src/server.ts` | Express application setting up and starting the server. |
+| `src/payment-required.ts` | Defines `X402SellerSDK` class and `x402Middleware` Express middleware. |
+| `src/facilitator.ts` | `FacilitatorClient` for communicating with the verify/settle endpoints. |

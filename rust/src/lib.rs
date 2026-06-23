@@ -19,6 +19,9 @@ mod types;
 
 pub use accepts::{accepts_from_env, AcceptsBuildError};
 pub use facilitator::{FacilitatorClient, FacilitatorError};
+#[cfg(feature = "sdk")]
+pub use facilitator::X402SellerSDK;
+
 pub use sla_escrow::{
     sla_escrow_accepts_from_env, sla_escrow_kind_extra_from_supported, SlaEscrowAcceptsError,
 };

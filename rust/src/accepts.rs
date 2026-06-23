@@ -57,23 +57,28 @@ pub fn accepts_from_env() -> Result<Vec<Value>, AcceptsBuildError> {
     // Inject merchantWallet into extra if MERCHANT_WALLET is set and extra doesn't already have it.
     // This ensures the facilitator can always resolve the real seller identity from the 402 body,
     // even when the vault PDA doesn't exist on-chain yet (pre-activation / JIT provision).
+    let merchant_wallet = std::env::var("MERCHANT_WALLET")
+        .or_else(|_| std::env::var("SELLER_WALLET"))
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
     let extra = match extra {
         Some(mut v) => {
             if let Some(obj) = v.as_object_mut() {
-                if !obj.contains_key("merchantWallet") {
-                    if let Ok(mw) =
-                        std::env::var("MERCHANT_WALLET").or_else(|_| std::env::var("SELLER_WALLET"))
-                    {
-                        let mw = mw.trim().to_string();
-                        if !mw.is_empty() {
-                            obj.insert("merchantWallet".to_string(), Value::String(mw));
-                        }
-                    }
+                if !obj.contains_key("merchantWallet") && !merchant_wallet.is_empty() {
+                    obj.insert("merchantWallet".to_string(), Value::String(merchant_wallet));
                 }
             }
             Some(v)
         }
-        None => None,
+        None => {
+            if !merchant_wallet.is_empty() {
+                Some(serde_json::json!({ "merchantWallet": merchant_wallet }))
+            } else {
+                None
+            }
+        }
     };
 
     let mut line = serde_json::json!({
